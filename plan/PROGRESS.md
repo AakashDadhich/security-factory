@@ -29,7 +29,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | # | Chunk | Status |
 |---|---|---|
 | 00 | accounts-and-repo-setup | done |
-| 01 | factory-skeleton | todo |
+| 01 | factory-skeleton | done |
 | 02 | pinned-tool-installer | todo |
 | 03 | data-contracts | todo |
 | 04 | model-adapter | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunk 01 (factory-skeleton). Check `plan/00-index.md` for anything that can run alongside it.
+Chunks 02 (pinned-tool-installer), 03 (data-contracts) and 05 (web-test-project) can now start, and can run in parallel. Check `plan/00-index.md` for their other dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -79,9 +79,21 @@ Chunk 01 (factory-skeleton). Check `plan/00-index.md` for anything that can run 
 - The owner's `gh` token can't list App installations (403), and the App is private, so it can't be looked up by slug either. To check the App from a workflow, mint an App token with `FACTORY_APP_ID` + `FACTORY_APP_PRIVATE_KEY`, or ask the owner to confirm.
 - Credentials live in the owner's Bitwarden. New repos: tag, add to the App installation, re-run the loop.
 - `plan/Security Software Factory.pdf` is local only and gitignored. Never commit it.
+- Package version lives in `factory/__init__.py` (`__version__`) and `pyproject.toml` (`0.1.0`); `python -m factory` prints `security-factory 0.1.0`.
+- Dev pins in `requirements-dev.txt`: pytest 9.2.0, jsonschema 4.26.0, PyYAML 6.0.3. Pytest config in `pyproject.toml` (`testpaths = ["tests"]`, `pythonpath = ["."]`).
+- Action pins in `selftest.yml`: `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1), `actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0` (v7.1.0), Python `3.12`. Checkout uses `persist-credentials: false`.
+- Runner facts in `docs/runners.md`: `macos-15` has no Docker and no listed `make` or SwiftLint (call `python -m factory.<module>` directly on macOS, install SwiftLint via `tools/versions.lock`). Ubuntu has none of Xcode/SwiftLint. Free plan: 20 concurrent jobs, 5 macOS; 6 h per job; 35 days per run.
+- Owner's Mac has only Python 3.14 (no 3.12) and no pytest; tests are verified in CI only.
 
 ## Session log
 (newest first: date, chunk, what was done, Done-when results)
+
+### 2026-10-27, chunk 01 (factory-skeleton)
+Added the folder layout, `factory` package, `pyproject.toml`, `requirements-dev.txt`, `Makefile`, smoke test, `selftest.yml`, `dependabot.yml`, `CLAUDE.md`, `README.md`, extended `.gitignore`, and `docs/runners.md` (verified against the runner-images readmes and GitHub's limits doc). Owner approved the push; selftest run `40605526763` green.
+- `gh run list ... --workflow selftest.yml --limit 1`: `completed success` (run 40605526763). Pass.
+- `gh run view 40605526763 --log | grep passed`: `1 passed in 0.02s`. Pass.
+- `grep -E 'uses: [^@]+@[0-9a-f]{40}' selftest.yml`: 2 of 2 `uses:` lines pinned by SHA. Pass.
+- `docs/runners.md`: 11 tools with yes/no and versions for both images, concurrency limits (20 / 5 macOS), time limits (6 h job, 35 days run), 3 source URLs, dated 2026-10-27. Pass.
 
 ### 2026-10-27, chunk 00 (accounts-and-repo-setup)
 Created and tagged both public repos, wrote `docs/setup-repos.md` (endpoints checked against the GitHub REST docs), set up local git with `origin`, committed. Owner turned on 2FA, created and installed the App, ran `claude setup-token` and the loop. Design PDF kept local only (`plan/*.pdf` in `.gitignore`, never committed).
