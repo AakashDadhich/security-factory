@@ -28,7 +28,7 @@ Read this file first in every session, then read the one chunk file you were giv
 
 | # | Chunk | Status |
 |---|---|---|
-| 00 | accounts-and-repo-setup | in progress |
+| 00 | accounts-and-repo-setup | done |
 | 01 | factory-skeleton | todo |
 | 02 | pinned-tool-installer | todo |
 | 03 | data-contracts | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunk 00 (accounts-and-repo-setup). It's mostly manual work for the owner, guided by the agent.
+Chunk 01 (factory-skeleton). Check `plan/00-index.md` for anything that can run alongside it.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -70,15 +70,30 @@ Chunk 00 (accounts-and-repo-setup). It's mostly manual work for the owner, guide
 
 ## Notes for next session
 - Owner: personal account `AakashDadhich` (no organisation, D21)
-- Factory repo: `AakashDadhich/security-factory` (confirmed in chunk 00)
+- Factory repo: `AakashDadhich/security-factory` (confirmed in chunk 00). Test web repo: `AakashDadhich/factory-test-web`. Both public, empty apart from the factory repo's first push.
 - Repo topic for factory repos: `security-factory`. The per-repo setup loop is `docs/setup-repos.md` (written in chunk 00).
 - Local factory checkout: `/Users/aakash/Documents/projects/secure-software-factory`
-- GitHub App name: (unset). App ID variable: `FACTORY_APP_ID`. Private key secret: `FACTORY_APP_PRIVATE_KEY`.
+- GitHub App: `aakashdadhich-factory-bot`, App ID `5502214`, installed on `factory-test-web` only ("Only select repositories"). App ID variable: `FACTORY_APP_ID`. Private key secret: `FACTORY_APP_PRIVATE_KEY`.
 - Claude token secret: `CLAUDE_CODE_OAUTH_TOKEN` (repo Actions secret + repo Dependabot secret, in every tagged repo)
 - Allowed spec-mode actors repo variable: `FACTORY_ALLOWED_ACTORS` (value `AakashDadhich`)
+- The owner's `gh` token can't list App installations (403), and the App is private, so it can't be looked up by slug either. To check the App from a workflow, mint an App token with `FACTORY_APP_ID` + `FACTORY_APP_PRIVATE_KEY`, or ask the owner to confirm.
+- Credentials live in the owner's Bitwarden. New repos: tag, add to the App installation, re-run the loop.
+- `plan/Security Software Factory.pdf` is local only and gitignored. Never commit it.
 
 ## Session log
 (newest first: date, chunk, what was done, Done-when results)
+
+### 2026-10-27, chunk 00 (accounts-and-repo-setup)
+Created and tagged both public repos, wrote `docs/setup-repos.md` (endpoints checked against the GitHub REST docs), set up local git with `origin`, committed. Owner turned on 2FA, created and installed the App, ran `claude setup-token` and the loop. Design PDF kept local only (`plan/*.pdf` in `.gitignore`, never committed).
+- Both repos: `PUBLIC`, topics `["security-factory"]`. Pass.
+- Both repos: secret scanning `enabled`, push protection `enabled`. Pass.
+- Both repos: secrets `CLAUDE_CODE_OAUTH_TOKEN`, `FACTORY_APP_PRIVATE_KEY`. Pass.
+- Both repos: Dependabot secret `CLAUDE_CODE_OAUTH_TOKEN`. Pass.
+- Both repos: variables `FACTORY_APP_ID` (`5502214`), `FACTORY_ALLOWED_ACTORS` (`AakashDadhich`). Pass.
+- Both repos: `default_workflow_permissions` `read`, `can_approve_pull_request_reviews` false, fork approval `all_external_contributors`. Pass.
+- App installed on `factory-test-web`: `gh api user/installations` returns 403 with the owner's OAuth token, and `GET /apps/{slug}` returns 404 because the App is private. Owner confirmed in Settings. Pass (manual).
+- `git remote -v`: `origin https://github.com/AakashDadhich/security-factory.git`. Pass.
+- `grep "gh secret set" docs/setup-repos.md`: lines 39, 40, 41; no secret values in the file. Pass.
 
 ## Starter prompt
 Paste this into a fresh session, replacing `NN-<slug>`:
