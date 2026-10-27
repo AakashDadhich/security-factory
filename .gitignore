@@ -1,2 +1,13 @@
 .DS_Store
 plan/*.pdf
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+.venv/
+.env
+*.pem
+out/
