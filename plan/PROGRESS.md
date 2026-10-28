@@ -37,7 +37,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 06 | walking-skeleton | done |
 | 07 | secrets-stage | done |
 | 08 | sast-semgrep | done |
-| 09 | sast-codeql-eslint-web | todo |
+| 09 | sast-codeql-eslint-web | done |
 | 10 | deps-and-sbom | todo |
 | 11 | gate-and-report | todo |
 | 12 | dast-zap-baseline | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 08 are done. Next in order is chunk 09 (sast-codeql-eslint-web); 10, 12 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, and adds `--stage <name>` to the manifest step in `setup`. AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 09 are done. Next in order is chunk 10 (deps-and-sbom); 12 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, and adds `--stage <name>` to the manifest step in `setup`. AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -122,7 +122,19 @@ Chunks 00 to 08 are done. Next in order is chunk 09 (sast-codeql-eslint-web); 10
 - Semgrep (chunk 08): `python -m factory.stages.sast_semgrep --platform <p> --src . --out out/sast-semgrep [--rules-dir ~/.factory/semgrep-rules]` (`make sast-semgrep PLATFORM=web`). Lock: `semgrep` 1.182.1 (pipx), `semgrep-rules` (new `kind = "git"` with `repo` and 40-char `commit`, installed to `$HOME/.factory/<name>` by a shallow fetch). Rule sets per platform in `semgrep-rules/rulesets.yml` (`community` paths are relative to the rules checkout, `custom` to the factory's `semgrep-rules/`). Custom rules in `semgrep-rules/custom/{web,swift}/<id>.yaml` with a same-named test file; `semgrep --test semgrep-rules/custom` runs in selftest job `semgrep-rules`, and a unit test requires every rule to have `ruleid:` and `ok:` cases.
 - Semgrep gotchas: quote YAML values containing `: ` (rule messages, patterns). Custom rule severities: ERROR becomes high, WARNING medium. Known gap: `urlsession-accepts-all-certificates` is excused by any `SecTrustEvaluateWithError` call in the delegate even if the result is ignored; tighten later. `sast-semgrep` reads the platform from the `setup` job output.
 
+- CodeQL and ESLint (chunk 09): jobs `sast-codeql` and `sast-eslint` (web only, both `--optional` in the gate so they skip for Apple projects). CodeQL steps are pinned to `github/codeql-action@9b3254085494b55a0f7c4c2b3d2d52cc712ce370` (v4.39.1; use the commit SHA, not the annotated tag object SHA, or zizmor `ref-version-mismatch` fires). `analyze` writes `out/sast-codeql/javascript.sarif`, converted with `python -m factory.sarif`. The called workflow needs `security-events: write`, so the project stub grants it (fork PRs cannot upload and will fail that job). Default CodeQL setup is `not-configured` on `factory-test-web`; keep it that way.
+- ESLint tooling lives in `tools/eslint/` (`package.json`, `package-lock.json`, `eslint.config.mjs`, `severity.yml`): eslint 10.13.0, typescript-eslint 8.72.1, eslint-plugin-security 4.2.0, eslint-plugin-no-unsanitized 4.1.5, formatter-sarif 3.1.0, typescript 6.0.3 (peer of typescript-eslint). Lockfile came from a throwaway CI run (168 packages, registry only, no install scripts). `python -m factory.stages.sast_eslint --src . --out out/sast-eslint [--skip-install]` (`make sast-eslint`) runs `npm ci --ignore-scripts` then ESLint with `--config` and `--no-config-lookup` (the project's config is ignored). Severity: SARIF `error` becomes `medium`, rules in `severity.yml` `escalate` become `high` (eval-with-expression, no-unsanitized method and property). Jobs need `actions/setup-node` (pinned v7.1.0, Node 22).
+- Relativising SARIF paths must rebuild findings with `make_finding`; editing `location` in place breaks the fingerprint check.
+- A security-review hook flagged the stub's `security-events: write` on a reusable workflow at `@main` with `secrets: inherit`. Accepted: same owner's repo, required by the chunk, and `@v1` pinning is chunk 30.
+
 ## Session log
+
+### 2026-10-28, chunk 09 (sast-codeql-eslint-web)
+Added `tools/eslint/`, `factory/stages/sast_eslint.py`, tests and fixtures, the `sast-codeql` and `sast-eslint` jobs (gate needs both, optional), the `eslint-integration` selftest job, Make target `sast-eslint`, and `security-events: write` in the stub (also committed to `factory-test-web`). First selftest run failed (stale fingerprints after relativising, CodeQL pinned to a tag object SHA); fixed in `f8da2f5`.
+- `factory-test-web` run `40790146143` (push): `setup`, `sast-codeql`, `sast-eslint`, `secrets`, `sast-semgrep`, `passthrough`, `hello-ai`, `gate` all `success`; both new artifacts have `findings.json` = `[]`. Pass.
+- `gh api repos/AakashDadhich/factory-test-web/code-scanning/analyses --jq '.[0].tool.name'` printed `CodeQL`. Pass.
+- selftest run `40790057086`: `test`, `eslint-integration`, `semgrep-rules`, `lint-workflows`, `secrets-integration`, `macos-smoke` all `success`. `eslint-integration` log: `1 passed`, then `1 findings, 1 high` for the `eval(req.query.x)` fixture. Pass.
+- `grep -E 'uses: github/codeql-action/[a-z]+@[0-9a-f]{40}' .github/workflows/factory.yml` matches both the `init` and `analyze` lines. Pass.
 
 ### 2026-10-28, chunk 08 (sast-semgrep)
 Added the installer `git` kind, lock entries, `factory/stages/sast_semgrep.py`, `semgrep-rules/rulesets.yml`, 4 web and 4 Swift custom rules with tests, `tests/test_sast_semgrep.py`, the `sast-semgrep` job (gate needs it), the `semgrep-rules` selftest job and Make targets `sast-semgrep`, `semgrep-test`. First CI runs failed on unquoted YAML colons and one Swift rule; fixed.
