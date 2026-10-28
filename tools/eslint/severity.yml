@@ -1,0 +1,4 @@
+escalate:
+  - security/detect-eval-with-expression
+  - no-unsanitized/method
+  - no-unsanitized/property

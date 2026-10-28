@@ -11,3 +11,4 @@ dist/
 .env
 *.pem
 out/
+node_modules/
