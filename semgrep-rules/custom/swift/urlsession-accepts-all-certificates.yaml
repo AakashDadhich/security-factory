@@ -14,5 +14,13 @@ rules:
           }
       - pattern-not-inside: |
           func urlSession(...) {
-            <... SecTrustEvaluateWithError(...) ...>
+            ...
+            let $OK = SecTrustEvaluateWithError(...)
+            ...
+          }
+      - pattern-not-inside: |
+          func urlSession(...) {
+            ...
+            SecTrustEvaluateWithError(...)
+            ...
           }
