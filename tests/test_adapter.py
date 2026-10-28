@@ -364,6 +364,13 @@ def test_claude_code_allow_write_model_and_limits(tmp_path, stub_cli, monkeypatc
             ),
             "exit": 1,
         },
+        {
+            "stdout": json.dumps(
+                {"type": "result", "subtype": "success", "is_error": True,
+                 "result": "You've hit your session limit · resets 11:20pm (UTC)"}
+            ),
+            "exit": 1,
+        },
         {"stderr": 'API Error: 429 {"type":"error","error":{"type":"rate_limit_error"}}', "exit": 1},
     ],
 )

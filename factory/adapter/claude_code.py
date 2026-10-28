@@ -13,7 +13,7 @@ DENIED_TOOLS = ("Bash", "WebFetch", "WebSearch")
 PASSTHROUGH_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "USER", "CI", "RUNNER_TEMP")
 
 USAGE_LIMIT = re.compile(
-    r"usage limit|rate[ _-]?limit|hit your (?:usage )?limit|limit (?:reached|exceeded)|\b429\b",
+    r"usage limit|rate[ _-]?limit|hit your (?:(?:usage|session|weekly) )?limit|limit (?:reached|exceeded)|\b429\b",
     re.IGNORECASE,
 )
 

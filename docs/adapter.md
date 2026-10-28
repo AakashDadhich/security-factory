@@ -75,7 +75,7 @@ claude --print --output-format json --restricted --tools <list> --allowed-tools 
 
 The prompt goes in on stdin. `--restricted` removes shell and web tools and ignores user and project settings files, `dontAsk` denies anything not on the allowlist instead of waiting for a person, and `--strict-mcp-config` with no config loads no MCP servers. The child process gets only `PATH`, `HOME`, `LANG`, `LC_ALL`, `TMPDIR`, `USER`, `CI`, `RUNNER_TEMP` and the OAuth token, so other secrets in the job (`GH_TOKEN`, API keys) never reach the model. The model reported in the meta file is the one with the most output tokens in the CLI's `modelUsage`.
 
-A usage or rate limit is recognised only when the CLI reports an error, by matching phrases such as "usage limit", "rate limit", "hit your limit" or HTTP 429. Words like that inside a successful reply are ignored.
+A usage or rate limit is recognised only when the CLI reports an error, by matching phrases such as "usage limit", "rate limit", "hit your limit" (also "usage", "session" or "weekly" limit) or HTTP 429. Words like that inside a successful reply are ignored.
 
 `--max-turns` does not appear in `claude --help` but is accepted in print mode. The `adapter-smoke` workflow checks every other flag against the pinned CLI's help, and its real run proves the full command line is accepted.
 
