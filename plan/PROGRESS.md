@@ -30,7 +30,7 @@ Read this file first in every session, then read the one chunk file you were giv
 |---|---|---|
 | 00 | accounts-and-repo-setup | done |
 | 01 | factory-skeleton | done |
-| 02 | pinned-tool-installer | todo |
+| 02 | pinned-tool-installer | done |
 | 03 | data-contracts | todo |
 | 04 | model-adapter | todo |
 | 05 | web-test-project | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 02 (pinned-tool-installer), 03 (data-contracts) and 05 (web-test-project) can now start, and can run in parallel. Check `plan/00-index.md` for their other dependencies.
+Chunk 02 is done. Chunks 03 (data-contracts) and 05 (web-test-project) can start in parallel if not already underway. Chunk 04 (model-adapter) needs 02, which is now done. Check `plan/00-index.md` for other dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -84,9 +84,24 @@ Chunks 02 (pinned-tool-installer), 03 (data-contracts) and 05 (web-test-project)
 - Action pins in `selftest.yml`: `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1), `actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0` (v7.1.0), Python `3.12`. Checkout uses `persist-credentials: false`.
 - Runner facts in `docs/runners.md`: `macos-15` has no Docker and no listed `make` or SwiftLint (call `python -m factory.<module>` directly on macOS, install SwiftLint via `tools/versions.lock`). Ubuntu has none of Xcode/SwiftLint. Free plan: 20 concurrent jobs, 5 macOS; 6 h per job; 35 days per run.
 - Owner's Mac has only Python 3.14 (no 3.12) and no pytest; tests are verified in CI only.
+- Tool installer (chunk 02): `python -m factory.tools install <name>...` and `python -m factory.tools list`. Lock is `tools/versions.lock`, TOML with `[[tool]]` entries (`name`, `version`, `kind`; optional `package` for pipx/npm when it differs from `name`; `image` with `@sha256:` for containers; `[tool.platforms.linux-x64]` / `[tool.platforms.macos-arm64]` tables with `url`, `sha256`, `archive`, `bin` for binaries). `load_lock()` validates every entry, so a bad entry fails the unit tests.
+- Pinned so far: gitleaks 8.30.1 (binary, linux-x64), actionlint 1.7.12 (binary, linux-x64), zizmor 1.31.1 (pipx). Binaries install to `$HOME/.factory/bin`; pipx tools land in `~/.local/bin` (already on PATH on runners).
+- `.github/actions/setup-factory`: sets up Python 3.12, installs `requirements-dev.txt`, makes the factory importable by writing a `security-factory.pth` file into site-packages (not `PYTHONPATH`/`GITHUB_ENV`, which zizmor flags), and adds `$HOME/.factory/bin` to `GITHUB_PATH`. It finds the factory root from its own path (`$GITHUB_ACTION_PATH/../../..`), so it works at `.factory/` or at the repo root (selftest uses `./.github/actions/setup-factory`). No `FACTORY_DIR` env var is set.
+- zizmor runs with `--config .github/zizmor.yml`, which disables only `self-repository` (GitHub's new `uses: $/...` syntax) because actionlint 1.7.12 can't parse it yet (rhysd/actionlint#711). Revisit when actionlint supports it; the `./.factory/...` pattern in factory.yml may also be worth rethinking then. The one `GITHUB_PATH` write in setup-factory carries `# zizmor: ignore[github-env]`.
+- actionlint lints workflows only (it doesn't accept composite `action.yml` files); zizmor covers both `.github/workflows` and `.github/actions`.
+- `make test` now runs `pytest -v` so test names appear in CI logs. Make targets: `test`, `tools-list`, `ensure-make`.
+- `macos-15` has `/usr/bin/make` (GNU Make 3.81). macOS arm64 jobs can queue for 10+ minutes ("capacity constraints" annotation).
+- Dependabot now also watches `/.github/actions/*` for action pins.
 
 ## Session log
 (newest first: date, chunk, what was done, Done-when results)
+
+### 2026-10-28, chunk 02 (pinned-tool-installer)
+Added `tools/versions.lock`, `factory/tools.py`, `factory/platform_check.py`, `.github/actions/setup-factory/action.yml`, `.github/zizmor.yml`, `tests/test_tools.py`, `tests/test_platform_check.py`, `lint-workflows` and `macos-smoke` jobs, Make targets and the macOS `make` fact in `docs/runners.md`. Checksums taken from each release's published checksums file and cross-checked against GitHub's asset digests. First run (`40746307677`) failed zizmor (`github-env` x3, `self-repository` x3); fixed and re-run with owner approval.
+- `gh run view 40746602330`: `test`, `lint-workflows`, `macos-smoke` all `success`. Pass.
+- pytest log: `test_install_binary_rejects_wrong_checksum PASSED` and `test_main_checksum_mismatch_exits_non_zero PASSED`; `43 passed`. Pass.
+- `lint-workflows` log: actionlint `Found total 0 errors`; zizmor `No findings to report. Good job! (1 ignored, 4 suppressed)`. Pass.
+- Lock: gitleaks and actionlint `linux-x64` sha256 are 64 lowercase hex; no container entries yet (test enforces `@sha256:` for any added later). Pass.
 
 ### 2026-10-27, chunk 01 (factory-skeleton)
 Added the folder layout, `factory` package, `pyproject.toml`, `requirements-dev.txt`, `Makefile`, smoke test, `selftest.yml`, `dependabot.yml`, `CLAUDE.md`, `README.md`, extended `.gitignore`, and `docs/runners.md` (verified against the runner-images readmes and GitHub's limits doc). Owner approved the push; selftest run `40605526763` green.
