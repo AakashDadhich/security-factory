@@ -3,7 +3,7 @@ rules:
     mode: taint
     languages: [javascript, typescript]
     severity: ERROR
-    message: Request data reaches child_process.exec, which runs its argument in a shell. This is command injection. Use execFile with an argument array and validate the input.
+    message: 'Request data reaches child_process.exec, which runs its argument in a shell. This is command injection. Use execFile with an argument array and validate the input.'
     metadata:
       cwe: ["CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"]
       category: security

@@ -2,7 +2,7 @@ rules:
   - id: jwt-verify-without-algorithms
     languages: [javascript, typescript]
     severity: ERROR
-    message: jsonwebtoken verify is called without an algorithms option, so the token header decides how it is verified. Pin the allowed algorithms, for example { algorithms: ["HS256"] }.
+    message: 'jsonwebtoken verify is called without an algorithms option, so the token header decides how it is verified. Pin the allowed algorithms, for example { algorithms: ["HS256"] }.'
     metadata:
       cwe: ["CWE-347: Improper Verification of Cryptographic Signature"]
       category: security
@@ -11,4 +11,4 @@ rules:
       - metavariable-regex:
           metavariable: $JWT
           regex: ^(jwt|jsonwebtoken)$
-      - pattern-not: $JWT.verify($TOKEN, $KEY, { ..., algorithms: $ALGS, ... }, ...)
+      - pattern-not: '$JWT.verify($TOKEN, $KEY, { ..., algorithms: $ALGS, ... }, ...)'

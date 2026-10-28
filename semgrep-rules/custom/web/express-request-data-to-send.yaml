@@ -3,7 +3,7 @@ rules:
     mode: taint
     languages: [javascript, typescript]
     severity: WARNING
-    message: Request data reaches res.send without validation or escaping. If the response is HTML this is reflected XSS.
+    message: 'Request data reaches res.send without validation or escaping. If the response is HTML this is reflected XSS.'
     metadata:
       cwe: ["CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"]
       category: security

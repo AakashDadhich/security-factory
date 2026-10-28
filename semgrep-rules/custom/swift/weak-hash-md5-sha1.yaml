@@ -2,7 +2,7 @@ rules:
   - id: weak-hash-md5-sha1
     languages: [swift]
     severity: WARNING
-    message: MD5 and SHA-1 are broken for security use such as signatures, password hashing or integrity checks. Use SHA-256 or better from CryptoKit.
+    message: 'MD5 and SHA-1 are broken for security use such as signatures, password hashing or integrity checks. Use SHA-256 or better from CryptoKit.'
     metadata:
       cwe: ["CWE-328: Use of Weak Hash"]
       category: security

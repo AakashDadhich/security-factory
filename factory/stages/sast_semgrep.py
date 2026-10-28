@@ -53,7 +53,8 @@ def semgrep_command(configs: list[str], src: str | Path, report: str | Path, bin
     return cmd
 
 
-def run_semgrep(configs: list[str], src: str | Path, report: Path, binary: str = "semgrep", runner=subprocess.run) -> None:
+def run_semgrep(configs: list[str], src: str | Path, report: Path, binary: str = "semgrep", runner=None) -> None:
+    runner = runner or subprocess.run
     for config in configs:
         if not Path(config).is_dir():
             raise StageError(f"rule directory not found: {config}; install community rules with python -m factory.tools install semgrep-rules")
