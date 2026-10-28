@@ -19,6 +19,13 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-factory
       - run: make test
+      - name: sarif contract check
+        run: |
+          python -m factory.sarif tests/fixtures/codeql.sarif --stage sast-codeql --tool codeql > first.json
+          python -m factory.sarif tests/fixtures/codeql.sarif --stage sast-codeql --tool codeql > second.json
+          cmp first.json second.json
+          python -c "import json; from factory import findings; items = findings.validate(json.load(open('first.json'))); print({f['rule_id']: f['severity'] for f in items})"
+          sha256sum first.json second.json
 
   lint-workflows:
     runs-on: ubuntu-24.04
