@@ -27,6 +27,28 @@ jobs:
           python -c "import json; from factory import findings; items = findings.validate(json.load(open('first.json'))); print({f['rule_id']: f['severity'] for f in items})"
           sha256sum first.json second.json
 
+  secrets-integration:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-factory
+      - run: python -m factory.tools install gitleaks
+      - name: secrets stage on a throwaway repo
+        env:
+          FACTORY_REQUIRE_GITLEAKS: "1"
+          FACTORY_SECRETS_IT_OUT: ${{ runner.temp }}/secrets-it
+        run: python -m pytest -v -s tests/test_secrets.py -k integration
+      - name: check the SARIF is redacted
+        env:
+          OUT: ${{ runner.temp }}/secrets-it
+        run: |
+          echo "REDACTED lines in gitleaks.sarif: $(grep -c REDACTED "$OUT/gitleaks.sarif")"
+          python -c "import json, sys; n = len(json.load(open(sys.argv[1]))); print(f'{n} findings'); sys.exit(n != 2)" "$OUT/findings.json"
+
   lint-workflows:
     runs-on: ubuntu-24.04
     permissions:
