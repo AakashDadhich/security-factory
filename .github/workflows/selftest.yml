@@ -49,6 +49,19 @@ jobs:
           echo "REDACTED lines in gitleaks.sarif: $(grep -c REDACTED "$OUT/gitleaks.sarif")"
           python -c "import json, sys; n = len(json.load(open(sys.argv[1]))); print(f'{n} findings'); sys.exit(n != 2)" "$OUT/findings.json"
 
+  semgrep-rules:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-factory
+      - run: python -m factory.tools install semgrep
+      - name: semgrep --test
+        run: semgrep --test --metrics=off --disable-version-check semgrep-rules/custom
+
   lint-workflows:
     runs-on: ubuntu-24.04
     permissions:
