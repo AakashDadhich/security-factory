@@ -47,6 +47,6 @@ Secret `CLAUDE_CODE_OAUTH_TOKEN` is optional. Without it, `hello-ai` is skipped 
 
 - validates every `in/*/findings.json` against the findings schema,
 - counts findings by severity and writes a Markdown table to `$GITHUB_STEP_SUMMARY` (and stdout),
-- fails closed. It exits 1 if any finding is `critical` or `high`, any findings file is invalid, `--needs` is empty, any needed job ended with anything but `success` (a job named with `--optional` may also be `skipped`), or any successful job other than `setup` left no `findings.json`.
+- fails closed. It exits 1 if any finding is `critical` or `high`, any findings file is invalid, `--needs` is empty, any needed job ended with anything but `success` (a job named with `--optional` may also be `skipped`), or any successful job other than `setup` left no `findings.json`. Skipped optional jobs are listed under the tables so a skip is never silent.
 
 Chunk 11 replaces this stub with the real gate and report.

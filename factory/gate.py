@@ -53,7 +53,8 @@ def evaluate(by_stage: dict[str, list], errors: list[str], needs: dict, optional
     blocking = sum(counts[s] for s in BLOCKING)
     if blocking:
         reasons.append(f"{blocking} critical or high finding(s)")
-    return {"passed": not reasons, "counts": counts, "reasons": reasons}
+    skipped = sorted(n for n in optional if isinstance(needs.get(n), dict) and needs[n].get("result") == "skipped")
+    return {"passed": not reasons, "counts": counts, "reasons": reasons, "skipped": skipped}
 
 
 def summary(result: dict, by_stage: dict[str, list], needs: dict) -> str:
@@ -65,6 +66,8 @@ def summary(result: dict, by_stage: dict[str, list], needs: dict) -> str:
     if needs:
         lines += ["", "| Job | Result |", "|---|---|"]
         lines += [f"| {name} | {job.get('result') if isinstance(job, dict) else None} |" for name, job in sorted(needs.items())]
+    if result["skipped"]:
+        lines += ["", "Skipped (optional, not checked): " + ", ".join(f"`{n}`" for n in result["skipped"])]
     if result["reasons"]:
         lines += ["", "Reasons:"] + [f"- {r}" for r in result["reasons"]]
     return "\n".join(lines) + "\n"

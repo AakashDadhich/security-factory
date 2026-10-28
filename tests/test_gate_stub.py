@@ -49,6 +49,7 @@ def test_empty_findings_pass_with_all_zero_table(tmp_path, monkeypatch, capsys):
         assert f"| {severity} | 0 |" in text
     assert "| passthrough | 0 |" in text
     assert "| hello-ai | skipped |" in text
+    assert "Skipped (optional, not checked): `hello-ai`" in text
     assert capsys.readouterr().out == text
 
 
@@ -70,6 +71,7 @@ def test_counts_merge_across_stages(tmp_path):
     assert result["counts"] == {"critical": 1, "high": 2, "medium": 0, "low": 1, "info": 0}
     assert not result["passed"]
     assert result["reasons"] == ["3 critical or high finding(s)"]
+    assert result["skipped"] == ["hello-ai"]
 
 
 @pytest.mark.parametrize("result", ["failure", "cancelled"])
