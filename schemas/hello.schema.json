@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/hello.schema.json",
+  "title": "Hello stage reply",
+  "type": "object",
+  "properties": {
+    "greeting": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1}
+  },
+  "required": ["greeting", "model"],
+  "additionalProperties": false
+}
