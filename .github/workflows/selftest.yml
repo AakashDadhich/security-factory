@@ -38,11 +38,13 @@ jobs:
       - uses: ./.github/actions/setup-factory
       - run: python -m factory.tools install actionlint zizmor
       - name: actionlint
-        run: actionlint -verbose
+        run: |
+          actionlint -verbose
+          actionlint -verbose templates/project/.github/workflows/factory.yml
       - name: zizmor
         env:
           GH_TOKEN: ${{ github.token }}
-        run: zizmor --format plain --config .github/zizmor.yml .github/workflows .github/actions
+        run: zizmor --format plain --config .github/zizmor.yml .github/workflows .github/actions templates/project/.github/workflows/factory.yml
 
   macos-smoke:
     runs-on: macos-15

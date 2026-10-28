@@ -1,0 +1,20 @@
+name: factory
+
+on:
+  push:
+    branches-ignore: ['factory/**', 'factory-record']
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  factory:
+    permissions:
+      contents: read
+    # Tracks the factory's main branch until the v1 tag exists (D17).
+    uses: AakashDadhich/security-factory/.github/workflows/factory.yml@main # zizmor: ignore[unpinned-uses]
+    with:
+      mode: check
+      factory-ref: main
+    secrets: inherit # zizmor: ignore[secrets-inherit]
