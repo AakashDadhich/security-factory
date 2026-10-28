@@ -31,9 +31,9 @@ Read this file first in every session, then read the one chunk file you were giv
 | 00 | accounts-and-repo-setup | done |
 | 01 | factory-skeleton | done |
 | 02 | pinned-tool-installer | done |
-| 03 | data-contracts | todo |
+| 03 | data-contracts | done |
 | 04 | model-adapter | todo |
-| 05 | web-test-project | todo |
+| 05 | web-test-project | in progress |
 | 06 | walking-skeleton | todo |
 | 07 | secrets-stage | todo |
 | 08 | sast-semgrep | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunk 02 is done. Chunks 03 (data-contracts) and 05 (web-test-project) can start in parallel if not already underway. Chunk 04 (model-adapter) needs 02, which is now done. Check `plan/00-index.md` for other dependencies.
+Chunks 02 and 03 are done; 05 (web-test-project) is in progress. Chunk 04 (model-adapter) can start now. Stage chunks can now build on the data contracts in `docs/contracts.md`. Check `plan/00-index.md` for other dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -92,9 +92,21 @@ Chunk 02 is done. Chunks 03 (data-contracts) and 05 (web-test-project) can start
 - `make test` now runs `pytest -v` so test names appear in CI logs. Make targets: `test`, `tools-list`, `ensure-make`.
 - `macos-15` has `/usr/bin/make` (GNU Make 3.81). macOS arm64 jobs can queue for 10+ minutes ("capacity constraints" annotation).
 - Dependabot now also watches `/.github/actions/*` for action pins.
+- Data contracts (chunk 03): schemas in `schemas/` (`finding`, `findings`, `run-manifest`, all `.schema.json`, JSON Schema 2020-12, `$id` base `https://github.com/AakashDadhich/security-factory/schemas/`). Spec in `docs/contracts.md`.
+- `factory.findings`: `make_finding(**fields)` (needs `stage`, `tool`, `source`, `rule_id`, `title`, `severity`, `location`; `cwe`, `description`, `remediation` default to empty), `fingerprint(tool, rule_id, location)`, `validate`, `load`, `write`, `dumps`, `validator(schema_name)` (use for the run manifest), `SEVERITIES` (most severe first), `FindingsError`. `validate` rejects duplicate ids and an `id`/`fingerprint` that doesn't match the fields.
+- Fingerprint is SHA-256 of JSON `[tool, rule_id, path, start_line]` or `[tool, rule_id, url_path, METHOD]` (host, port and query ignored). File line numbers may be `null`; a SARIF result with no location gets path `.`.
+- `python -m factory.sarif <file> --stage <s> --tool <t> [--out out/<s>/findings.json]`. Reads rules from `tool.driver` and `tool.extensions` (CodeQL packs), skips `kind` `pass`/`notApplicable`, merges same-fingerprint results keeping the highest severity. Gitleaks SARIF has no `level`, so its findings come out `medium`; chunk 07 may want to raise that.
+- `python -m factory.sbom components <bom>` / `diff <old> <new>`: diff keys packages by purl minus version/qualifiers (else name) and returns `added`, `removed`, `changed` (`{name, old_versions, new_versions}`, lists). `SbomError` for bad input.
+- Fixtures in `tests/fixtures/`: `semgrep.sarif`, `gitleaks.sarif`, `codeql.sarif`, `sbom-old.cdx.json`, `sbom-new.cdx.json`. selftest `test` job has a `sarif contract check` step (runs the CodeQL fixture twice, `cmp`, validates).
 
 ## Session log
 (newest first: date, chunk, what was done, Done-when results)
+
+### 2026-10-28, chunk 03 (data-contracts)
+Added the three schemas, `factory/findings.py`, `factory/sarif.py`, `factory/sbom.py`, `docs/contracts.md`, `tests/test_findings.py`, `tests/test_sarif.py`, `tests/test_sbom.py`, five fixtures and a `sarif contract check` step in selftest. Owner approved the push; selftest run `40750075295` green.
+- `gh run view 40750075295`: `test`, `lint-workflows`, `macos-smoke` all `success`; `132 passed in 0.77s`, 89 of them in the three new test files. Pass.
+- `python -m factory.sarif tests/fixtures/codeql.sarif --stage sast-codeql --tool codeql` (CI step and `test_cli_codeql_output_validates_and_is_stable PASSED`): output validates; `js/sql-injection` (security-severity 8.1) is `high`, 9.8 `critical`, 6.1 `medium`, 3.2 `low`. Pass.
+- Fingerprint stability: `cmp first.json second.json` clean, both sha256 `fde562b2...fa42e2`; `test_fixtures_convert_to_valid_findings_with_stable_fingerprints` PASSED for all three fixtures. Pass.
 
 ### 2026-10-28, chunk 02 (pinned-tool-installer)
 Added `tools/versions.lock`, `factory/tools.py`, `factory/platform_check.py`, `.github/actions/setup-factory/action.yml`, `.github/zizmor.yml`, `tests/test_tools.py`, `tests/test_platform_check.py`, `lint-workflows` and `macos-smoke` jobs, Make targets and the macOS `make` fact in `docs/runners.md`. Checksums taken from each release's published checksums file and cross-checked against GitHub's asset digests. First run (`40746307677`) failed zizmor (`github-env` x3, `self-repository` x3); fixed and re-run with owner approval.
