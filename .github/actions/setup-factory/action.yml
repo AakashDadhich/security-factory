@@ -1,0 +1,20 @@
+name: setup-factory
+description: >-
+  Set up Python 3.12, install the factory's pinned requirements, make the
+  factory package importable and put $HOME/.factory/bin on PATH. Expects the
+  factory repo to be checked out already (usually at .factory/).
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: "3.12"
+    - name: Install factory
+      shell: bash
+      run: |
+        factory_dir="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        python -m pip install -r "$factory_dir/requirements-dev.txt"
+        echo "PYTHONPATH=$factory_dir${PYTHONPATH:+:$PYTHONPATH}" >> "$GITHUB_ENV"
+        echo "FACTORY_DIR=$factory_dir" >> "$GITHUB_ENV"
+        mkdir -p "$HOME/.factory/bin"
+        echo "$HOME/.factory/bin" >> "$GITHUB_PATH"
