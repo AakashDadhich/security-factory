@@ -9,7 +9,9 @@ class Bad: NSObject, URLSessionDelegate {
 
 class Good: NSObject, URLSessionDelegate {
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        guard let trust = challenge.protectionSpace.serverTrust, SecTrustEvaluateWithError(trust, nil) else {
+        let trust = challenge.protectionSpace.serverTrust!
+        let trusted = SecTrustEvaluateWithError(trust, nil)
+        if !trusted {
             completionHandler(.cancelAuthenticationChallenge, nil)
             return
         }
