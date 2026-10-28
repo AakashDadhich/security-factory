@@ -1,0 +1,56 @@
+name: adapter-smoke
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  hello:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-factory
+      - run: python -m factory.tools install claude-code
+      - name: check claude CLI flags
+        run: |
+          claude --version
+          help="$(claude --help)"
+          for flag in --print --output-format --restricted --tools --allowed-tools --disallowed-tools \
+            --permission-mode --strict-mcp-config --no-session-persistence --add-dir --model; do
+            grep -qE -- "(^|[[:space:],])${flag}([[:space:],]|$)" <<<"$help" || { echo "missing flag: $flag"; exit 1; }
+          done
+          echo "all flags present"
+      - name: hello stage
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          FACTORY_MODEL_ADAPTER: claude_code
+          FACTORY_CLAUDE_TIMEOUT: "300"
+          FACTORY_CLAUDE_MAX_TURNS: "3"
+        run: >-
+          python -m factory.adapter run --stage hello
+          --prompt prompts/hello.md
+          --schema schemas/hello.schema.json
+          --out out/hello/hello.json
+      - name: validate reply
+        run: |
+          python - <<'PY'
+          import json
+          from jsonschema import Draft202012Validator
+          schema = json.load(open("schemas/hello.schema.json"))
+          reply = json.load(open("out/hello/hello.json"))
+          Draft202012Validator(schema).validate(reply)
+          print("valid:", reply)
+          print("meta:", json.load(open("out/hello/hello.json.meta.json")))
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: hello
+          path: out/hello/
+          if-no-files-found: error
