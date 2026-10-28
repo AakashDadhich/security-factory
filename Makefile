@@ -1,4 +1,4 @@
-.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint
+.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint deps-sbom
 
 help:
 	@echo "make test         Run the factory test suite"
@@ -8,6 +8,7 @@ help:
 	@echo "make sast-semgrep Run Semgrep on PLATFORM (default web) over SRC (default .)"
 	@echo "make semgrep-test Run the custom Semgrep rule tests"
 	@echo "make sast-eslint  Run the factory ESLint security config over SRC (default .)"
+	@echo "make deps-sbom    Scan dependencies and write a CycloneDX SBOM for SRC (default .)"
 
 test:
 	python -m pytest -v
@@ -32,3 +33,6 @@ semgrep-test:
 
 sast-eslint:
 	python -m factory.stages.sast_eslint --src $(SRC) --out out/sast-eslint
+
+deps-sbom:
+	python -m factory.stages.deps_sbom --src $(SRC) --out out/deps-sbom
