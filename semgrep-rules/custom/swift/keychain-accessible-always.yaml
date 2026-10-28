@@ -1,0 +1,9 @@
+rules:
+  - id: keychain-accessible-always
+    languages: [swift]
+    severity: ERROR
+    message: kSecAttrAccessibleAlways keeps the item readable even while the device is locked. Use kSecAttrAccessibleWhenUnlockedThisDeviceOnly or kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly.
+    metadata:
+      cwe: ["CWE-311: Missing Encryption of Sensitive Data"]
+      category: security
+    pattern-regex: \bkSecAttrAccessibleAlways(ThisDeviceOnly)?\b

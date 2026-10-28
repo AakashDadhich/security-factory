@@ -1,0 +1,20 @@
+rules:
+  - id: userdefaults-sensitive-value
+    languages: [swift]
+    severity: ERROR
+    message: A value named like a token, password or secret is stored in UserDefaults, which is unencrypted and included in backups. Store it in the Keychain.
+    metadata:
+      cwe: ["CWE-312: Cleartext Storage of Sensitive Information"]
+      category: security
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: UserDefaults.standard.set($V, forKey: $K)
+              - metavariable-regex:
+                  metavariable: $K
+                  regex: (?i).*(token|password|secret).*
+          - patterns:
+              - pattern: UserDefaults.standard.set($V, forKey: $K)
+              - metavariable-regex:
+                  metavariable: $V
+                  regex: (?i).*(token|password|secret).*

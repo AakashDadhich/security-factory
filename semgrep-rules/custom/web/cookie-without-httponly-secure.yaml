@@ -1,0 +1,15 @@
+rules:
+  - id: cookie-without-httponly-secure
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Cookie is set without both httpOnly and secure. Set httpOnly so scripts cannot read it and secure so it is only sent over HTTPS.
+    metadata:
+      cwe: ["CWE-1004: Sensitive Cookie Without 'HttpOnly' Flag", "CWE-614: Sensitive Cookie in HTTPS Session Without 'Secure' Attribute"]
+      category: security
+    patterns:
+      - pattern: $RES.cookie(...)
+      - metavariable-regex:
+          metavariable: $RES
+          regex: ^(res|response)$
+      - pattern-not: $RES.cookie($NAME, $VALUE, { ..., httpOnly: true, ..., secure: true, ... })
+      - pattern-not: $RES.cookie($NAME, $VALUE, { ..., secure: true, ..., httpOnly: true, ... })

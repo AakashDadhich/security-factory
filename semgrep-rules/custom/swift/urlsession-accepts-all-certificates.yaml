@@ -1,0 +1,20 @@
+rules:
+  - id: urlsession-accepts-all-certificates
+    languages: [swift]
+    severity: ERROR
+    message: The URLSession delegate trusts any server certificate without evaluating it, which disables TLS validation. Call SecTrustEvaluateWithError, or use .performDefaultHandling.
+    metadata:
+      cwe: ["CWE-295: Improper Certificate Validation"]
+      category: security
+    patterns:
+      - pattern: $H(.useCredential, $CRED)
+      - pattern-inside: |
+          func urlSession(...) {
+            ...
+          }
+      - pattern-not-inside: |
+          func urlSession(...) {
+            ...
+            SecTrustEvaluateWithError(...)
+            ...
+          }

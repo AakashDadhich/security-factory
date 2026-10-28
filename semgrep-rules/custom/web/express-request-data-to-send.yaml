@@ -1,0 +1,27 @@
+rules:
+  - id: express-request-data-to-send
+    mode: taint
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Request data reaches res.send without validation or escaping. If the response is HTML this is reflected XSS.
+    metadata:
+      cwe: ["CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"]
+      category: security
+    pattern-sources:
+      - pattern: $REQ.body
+      - pattern: $REQ.query
+      - pattern: $REQ.params
+      - pattern: $REQ.headers
+    pattern-sanitizers:
+      - pattern: escapeHtml(...)
+      - pattern: validator.escape(...)
+      - pattern: $SCHEMA.parse(...)
+      - pattern: Number(...)
+      - pattern: parseInt(...)
+      - pattern: encodeURIComponent(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: $RES.send(...)
+          - metavariable-regex:
+              metavariable: $RES
+              regex: ^(res|response)$

@@ -1,0 +1,15 @@
+community:
+  web:
+    - javascript
+    - typescript
+  macos:
+    - swift
+  ios:
+    - swift
+custom:
+  web:
+    - custom/web
+  macos:
+    - custom/swift
+  ios:
+    - custom/swift

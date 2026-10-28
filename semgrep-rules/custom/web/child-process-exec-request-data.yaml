@@ -1,0 +1,34 @@
+rules:
+  - id: child-process-exec-request-data
+    mode: taint
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Request data reaches child_process.exec, which runs its argument in a shell. This is command injection. Use execFile with an argument array and validate the input.
+    metadata:
+      cwe: ["CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"]
+      category: security
+    pattern-sources:
+      - pattern: $REQ.body
+      - pattern: $REQ.query
+      - pattern: $REQ.params
+      - pattern: $REQ.headers
+    pattern-sanitizers:
+      - pattern: Number(...)
+      - pattern: parseInt(...)
+      - pattern: $SCHEMA.parse(...)
+    pattern-sinks:
+      - patterns:
+          - pattern: $CP.$FN($CMD, ...)
+          - focus-metavariable: $CMD
+          - metavariable-regex:
+              metavariable: $CP
+              regex: ^(child_process|childProcess|cp)$
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(exec|execSync)$
+      - patterns:
+          - pattern: $FN($CMD, ...)
+          - focus-metavariable: $CMD
+          - metavariable-regex:
+              metavariable: $FN
+              regex: ^(exec|execSync)$
