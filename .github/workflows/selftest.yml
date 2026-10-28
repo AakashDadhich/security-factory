@@ -62,6 +62,32 @@ jobs:
       - name: semgrep --test
         run: semgrep --test --metrics=off --disable-version-check semgrep-rules/custom
 
+  eslint-integration:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-factory
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: tools/eslint
+      - name: eslint stage on the eval fixture
+        env:
+          FACTORY_REQUIRE_ESLINT: "1"
+          FACTORY_ESLINT_IT_OUT: ${{ runner.temp }}/eslint-it
+        run: python -m pytest -v -s tests/test_sast_eslint.py -k integration
+      - name: assert one high finding
+        env:
+          OUT: ${{ runner.temp }}/eslint-it
+        run: |
+          python -c "import json, sys; items = json.load(open(sys.argv[1])); high = [f for f in items if f['severity'] == 'high']; print(f'{len(items)} findings, {len(high)} high'); sys.exit(len(high) != 1)" "$OUT/findings.json"
+
   lint-workflows:
     runs-on: ubuntu-24.04
     permissions:
