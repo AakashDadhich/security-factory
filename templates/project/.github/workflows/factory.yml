@@ -12,6 +12,7 @@ jobs:
   factory:
     permissions:
       contents: read
+      security-events: write
     # Tracks the factory's main branch until the v1 tag exists (D17).
     uses: AakashDadhich/security-factory/.github/workflows/factory.yml@main # zizmor: ignore[unpinned-uses]
     with:

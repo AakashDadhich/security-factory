@@ -58,7 +58,7 @@ Secret `CLAUDE_CODE_OAUTH_TOKEN` is optional. Without it, `hello-ai` is skipped 
 
 ## Gate (stub)
 
-`python -m factory.gate --artifacts in --needs "$NEEDS" --optional hello-ai`, where `NEEDS` is `toJSON(needs)`:
+`python -m factory.gate --artifacts in --needs "$NEEDS" --optional hello-ai --optional sast-codeql --optional sast-eslint`, where `NEEDS` is `toJSON(needs)`:
 
 - validates every `in/*/findings.json` against the findings schema,
 - counts findings by severity and writes a Markdown table to `$GITHUB_STEP_SUMMARY` (and stdout),
