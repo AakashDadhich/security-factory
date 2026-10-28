@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/run-manifest.schema.json",
+  "title": "Run manifest",
+  "description": "What one pipeline run did, with which inputs and tool versions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "mode",
+    "platform",
+    "iteration",
+    "issue",
+    "repo",
+    "commit_sha",
+    "factory_ref",
+    "asvs_level",
+    "stages",
+    "tool_versions"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "enum": ["spec", "check", "fix", "change"]
+    },
+    "platform": {
+      "enum": ["web", "macos", "ios"]
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2
+    },
+    "issue": {
+      "description": "GitHub issue number, or null when the run has no issue.",
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "repo": {
+      "description": "owner/name",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$"
+    },
+    "commit_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "factory_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "asvs_level": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "status": {
+            "enum": ["pending", "running", "success", "failure", "skipped"]
+          }
+        }
+      }
+    },
+    "tool_versions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

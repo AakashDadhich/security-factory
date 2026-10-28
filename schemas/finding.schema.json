@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/finding.schema.json",
+  "title": "Finding",
+  "description": "One security finding produced by a factory stage.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "stage",
+    "tool",
+    "source",
+    "rule_id",
+    "title",
+    "severity",
+    "location",
+    "cwe",
+    "description",
+    "remediation",
+    "fingerprint"
+  ],
+  "properties": {
+    "id": {
+      "description": "<stage>:<fingerprint>",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*:[0-9a-f]{64}$"
+    },
+    "stage": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "enum": ["scanner", "ai-review", "ai-threat-model", "check"]
+    },
+    "rule_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "severity": {
+      "enum": ["critical", "high", "medium", "low", "info"]
+    },
+    "location": {
+      "oneOf": [
+        { "$ref": "#/$defs/file_location" },
+        { "$ref": "#/$defs/url_location" }
+      ]
+    },
+    "cwe": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^CWE-[1-9][0-9]*$"
+      }
+    },
+    "description": {
+      "type": "string"
+    },
+    "remediation": {
+      "type": "string"
+    },
+    "fingerprint": {
+      "description": "SHA-256 of tool, rule_id and the normalised location.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {
+    "line": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "file_location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "start_line", "end_line"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "start_line": { "$ref": "#/$defs/line" },
+        "end_line": { "$ref": "#/$defs/line" }
+      }
+    },
+    "url_location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "method"],
+      "properties": {
+        "url": { "type": "string", "minLength": 1 },
+        "method": { "type": "string", "pattern": "^[A-Z]+$" }
+      }
+    }
+  }
+}

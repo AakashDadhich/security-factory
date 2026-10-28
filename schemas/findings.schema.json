@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/findings.schema.json",
+  "title": "Findings",
+  "description": "The contents of out/<stage>/findings.json.",
+  "type": "array",
+  "items": { "$ref": "finding.schema.json" }
+}
