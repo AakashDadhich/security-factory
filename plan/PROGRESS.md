@@ -36,7 +36,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 05 | web-test-project | done |
 | 06 | walking-skeleton | done |
 | 07 | secrets-stage | done |
-| 08 | sast-semgrep | todo |
+| 08 | sast-semgrep | in progress |
 | 09 | sast-codeql-eslint-web | todo |
 | 10 | deps-and-sbom | todo |
 | 11 | gate-and-report | todo |
@@ -120,6 +120,9 @@ Chunks 00 to 07 are done. Next in order is chunk 08 (sast-semgrep); 09, 10, 12 a
 - Integration test `test_integration_real_gitleaks_finds_secret_and_env_file` skips when gitleaks is missing unless `FACTORY_REQUIRE_GITLEAKS` is set (selftest `secrets-integration` sets it, and `FACTORY_SECRETS_IT_OUT` to keep the SARIF for the REDACTED check). The fake key is generated at test time with entropy above 3.7 and no 3-letter hex runs so Gitleaks' generic rule fires reliably.
 
 ## Session log
+
+### 2026-10-28, chunk 08 (sast-semgrep), in progress
+Implemented and committed locally (5 commits): installer `git` kind, lock entries `semgrep` 1.182.1 and `semgrep-rules` (commit `16b9e6d45f10649f6a531ec4838ed9924372c3bc`), `factory/stages/sast_semgrep.py`, `semgrep-rules/rulesets.yml`, 8 custom rules with tests, `sast-semgrep` job, `semgrep-rules` selftest job. NOT pushed: the push was denied by the auto mode classifier, so no CI results yet. Custom rules were written without running Semgrep locally and may need fixes after the first `semgrep --test` run.
 
 ### 2026-10-28, chunk 07 (secrets-stage)
 Added `factory/stages/secrets.py`, `rules/gitleaks.toml`, `tests/test_secrets.py`, the `secrets` job in `factory.yml` (gate now needs it), the `secrets-integration` selftest job, Make target `secrets` and a Secrets stage section in `docs/pipeline.md`. Pushed with owner pre-approval.
