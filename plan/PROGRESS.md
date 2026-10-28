@@ -33,7 +33,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 02 | pinned-tool-installer | done |
 | 03 | data-contracts | done |
 | 04 | model-adapter | todo |
-| 05 | web-test-project | in progress |
+| 05 | web-test-project | done |
 | 06 | walking-skeleton | todo |
 | 07 | secrets-stage | todo |
 | 08 | sast-semgrep | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 02 and 03 are done; 05 (web-test-project) is in progress. Chunk 04 (model-adapter) can start now. Stage chunks can now build on the data contracts in `docs/contracts.md`. Check `plan/00-index.md` for other dependencies.
+Chunks 02, 03 and 05 are done. Chunk 04 (model-adapter) can start now, and 06 (walking-skeleton) can run against `factory-test-web`. Stage chunks can now build on the data contracts in `docs/contracts.md`. Check `plan/00-index.md` for other dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -70,7 +70,7 @@ Chunks 02 and 03 are done; 05 (web-test-project) is in progress. Chunk 04 (model
 
 ## Notes for next session
 - Owner: personal account `AakashDadhich` (no organisation, D21)
-- Factory repo: `AakashDadhich/security-factory` (confirmed in chunk 00). Test web repo: `AakashDadhich/factory-test-web`. Both public, empty apart from the factory repo's first push.
+- Factory repo: `AakashDadhich/security-factory` (confirmed in chunk 00). Test web repo: `AakashDadhich/factory-test-web`. Both public.
 - Repo topic for factory repos: `security-factory`. The per-repo setup loop is `docs/setup-repos.md` (written in chunk 00).
 - Local factory checkout: `/Users/aakash/Documents/projects/secure-software-factory`
 - GitHub App: `aakashdadhich-factory-bot`, App ID `5502214`, installed on `factory-test-web` only ("Only select repositories"). App ID variable: `FACTORY_APP_ID`. Private key secret: `FACTORY_APP_PRIVATE_KEY`.
@@ -98,9 +98,21 @@ Chunks 02 and 03 are done; 05 (web-test-project) is in progress. Chunk 04 (model
 - `python -m factory.sarif <file> --stage <s> --tool <t> [--out out/<s>/findings.json]`. Reads rules from `tool.driver` and `tool.extensions` (CodeQL packs), skips `kind` `pass`/`notApplicable`, merges same-fingerprint results keeping the highest severity. Gitleaks SARIF has no `level`, so its findings come out `medium`; chunk 07 may want to raise that.
 - `python -m factory.sbom components <bom>` / `diff <old> <new>`: diff keys packages by purl minus version/qualifiers (else name) and returns `added`, `removed`, `changed` (`{name, old_versions, new_versions}`, lists). `SbomError` for bad input.
 - Fixtures in `tests/fixtures/`: `semgrep.sarif`, `gitleaks.sarif`, `codeql.sarif`, `sbom-old.cdx.json`, `sbom-new.cdx.json`. selftest `test` job has a `sarif contract check` step (runs the CodeQL fixture twice, `cmp`, validates).
+- Test web app (chunk 05): checked out at `/Users/aakash/Documents/projects/factory-test-web`, default branch `main`. Express 5.3.0, helmet 8.3.0, TypeScript 7.0.2, supertest 7.3.1, `@types/node` 22.20.5, ESM (`"type": "module"`). `createApp()` in `src/app.ts`, entry `src/server.ts` (reads `PORT`, default 3000), compiled to `dist/src/server.js`. `npm test` runs `tsc` then `node --test "dist/test/**/*.test.js"` (6 tests). Unknown routes return JSON 404; errors return generic JSON (`bad request` for 4xx, `internal error` otherwise); JSON body limit 10 kB.
+- Test web Dockerfile: two stages on `node:22-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da`, runs as `node`, `EXPOSE 3000`, `HEALTHCHECK` uses `node -e fetch(...)` (no curl in slim). `.factory.yml` has `platform`, `asvs_level`, `web` only (no `apple` block). `openapi.yaml` is OpenAPI 3.1.0 with `servers: http://localhost:3000`.
+- Test web `app-ci.yml`: job `build-and-test` on `ubuntu-24.04`, top-level `permissions: {}`, job `contents: read`. Pins: checkout v7.0.1 (as above), `actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1` (v7.1.0, `package-manager-cache: false`). Steps `npm ci`, `npm test`, `docker build --tag factory-test-web:ci .`.
+- Test web Dependabot ignores semver-major bumps of the `node` image and `@types/node` (owner chose to stay on Node 22, maintenance LTS until April 2027). Odd Node majors (e.g. 25) are never LTS.
+- No Node, npm or Docker on the owner's Mac. Lockfiles get generated in CI: push a throwaway branch with a workflow that runs `npm install --package-lock-only --ignore-scripts` and uploads the file, then `gh run download`. Pushing the first branch to an empty repo makes it the default branch, so push `main` first next time.
 
 ## Session log
 (newest first: date, chunk, what was done, Done-when results)
+
+### 2026-10-28, chunk 05 (web-test-project)
+Built `AakashDadhich/factory-test-web`: Express 5 TypeScript app (`/health`, `/api/greeting`), 6 node:test + supertest tests, multi-stage Dockerfile, `openapi.yaml`, `.factory.yml`, `.env.example`, `.gitignore`, `.dockerignore`, Dependabot, `app-ci.yml`, README. The lockfile came from a throwaway `bootstrap/lockfile` branch (run `40750758840`: 122 packages, all from registry.npmjs.org with integrity, no install scripts). That branch briefly became the default; the owner approved switching the default to `main` and deleting it, which closed two Dependabot PRs (node 25, `@types/node` 26). The owner approved the pushes.
+- `gh run list --repo AakashDadhich/factory-test-web --workflow app-ci.yml --limit 1`: `completed success` (run `40753679396`, main). Pass.
+- CI log: `# tests 6`, `# pass 6`, `# fail 0` (the 4 required plus JSON 404 and oversized body), and `naming to docker.io/library/factory-test-web:ci done`. Pass.
+- `.factory.yml` parsed with Ruby's YAML (no PyYAML on the Mac): `platform: web`. Pass.
+- `git ls-files | grep -x .env`: prints nothing. Pass.
 
 ### 2026-10-28, chunk 03 (data-contracts)
 Added the three schemas, `factory/findings.py`, `factory/sarif.py`, `factory/sbom.py`, `docs/contracts.md`, `tests/test_findings.py`, `tests/test_sarif.py`, `tests/test_sbom.py`, five fixtures and a `sarif contract check` step in selftest. Owner approved the push; selftest run `40750075295` green.
