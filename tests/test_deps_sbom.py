@@ -113,7 +113,8 @@ class FakeTools:
         self.calls.append(cmd)
         name = Path(cmd[0]).name
         if name == "osv-scanner":
-            shutil.copyfileobj((FIXTURES / "osv.sarif").open("rb"), stdout) if self.osv_exit in (0, 1) else None
+            if self.osv_exit in (0, 1):
+                stdout.write((FIXTURES / "osv.sarif").read_text())
             return SimpleNamespace(returncode=self.osv_exit)
         if name == "syft":
             output = [a for a in cmd if a.startswith("cyclonedx-json=")][0].split("=", 1)[1]
