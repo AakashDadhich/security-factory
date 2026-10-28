@@ -38,11 +38,14 @@ def apply_severity(items: list, escalate: set[str]) -> list:
 
 def relativise(items: list, src: Path) -> list:
     root = str(src.resolve()).rstrip("/") + "/"
+    result = []
     for item in items:
-        path = item["location"].get("path", "")
+        fields = {k: v for k, v in item.items() if k not in ("id", "fingerprint")}
+        path = fields["location"].get("path", "")
         if path.startswith(root):
-            item["location"]["path"] = path[len(root):]
-    return items
+            fields["location"] = {**fields["location"], "path": path[len(root):]}
+        result.append(findings.make_finding(**fields))
+    return result
 
 
 def eslint_command(tooling: Path, report: Path, binary: str | None = None) -> list[str]:
