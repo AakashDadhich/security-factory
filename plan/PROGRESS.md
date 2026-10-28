@@ -36,7 +36,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 05 | web-test-project | done |
 | 06 | walking-skeleton | done |
 | 07 | secrets-stage | done |
-| 08 | sast-semgrep | in progress |
+| 08 | sast-semgrep | done |
 | 09 | sast-codeql-eslint-web | todo |
 | 10 | deps-and-sbom | todo |
 | 11 | gate-and-report | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 07 are done. Next in order is chunk 08 (sast-semgrep); 09, 10, 12 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, and adds `--stage <name>` to the manifest step in `setup`. AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 08 are done. Next in order is chunk 09 (sast-codeql-eslint-web); 10, 12 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, and adds `--stage <name>` to the manifest step in `setup`. AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -119,10 +119,17 @@ Chunks 00 to 07 are done. Next in order is chunk 08 (sast-semgrep); 09, 10, 12 a
 - Secrets stage (chunk 07): `python -m factory.stages.secrets --repo . --out out/secrets [--gitleaks <bin>]` (`make secrets`). Module `factory/stages/secrets.py`, config `rules/gitleaks.toml`. Runs `gitleaks git` with `--redact=100 --exit-code 99`: 99 means leaks (findings), 0 clean, anything else fails the stage (Gitleaks also exits 1 on its own errors, hence the custom code). Gitleaks findings are forced to `high` with CWE-798; `committed-env-file` checks are source `check`, tool `factory`, CWE-540. Secrets job needs `fetch-depth: 0` on the project checkout. `secrets` is a required (not optional) gate job. The same secret at one path and line across commits collapses to one finding (fingerprint has no commit).
 - Integration test `test_integration_real_gitleaks_finds_secret_and_env_file` skips when gitleaks is missing unless `FACTORY_REQUIRE_GITLEAKS` is set (selftest `secrets-integration` sets it, and `FACTORY_SECRETS_IT_OUT` to keep the SARIF for the REDACTED check). The fake key is generated at test time with entropy above 3.7 and no 3-letter hex runs so Gitleaks' generic rule fires reliably.
 
+- Semgrep (chunk 08): `python -m factory.stages.sast_semgrep --platform <p> --src . --out out/sast-semgrep [--rules-dir ~/.factory/semgrep-rules]` (`make sast-semgrep PLATFORM=web`). Lock: `semgrep` 1.182.1 (pipx), `semgrep-rules` (new `kind = "git"` with `repo` and 40-char `commit`, installed to `$HOME/.factory/<name>` by a shallow fetch). Rule sets per platform in `semgrep-rules/rulesets.yml` (`community` paths are relative to the rules checkout, `custom` to the factory's `semgrep-rules/`). Custom rules in `semgrep-rules/custom/{web,swift}/<id>.yaml` with a same-named test file; `semgrep --test semgrep-rules/custom` runs in selftest job `semgrep-rules`, and a unit test requires every rule to have `ruleid:` and `ok:` cases.
+- Semgrep gotchas: quote YAML values containing `: ` (rule messages, patterns). Custom rule severities: ERROR becomes high, WARNING medium. Known gap: `urlsession-accepts-all-certificates` is excused by any `SecTrustEvaluateWithError` call in the delegate even if the result is ignored; tighten later. `sast-semgrep` reads the platform from the `setup` job output.
+
 ## Session log
 
-### 2026-10-28, chunk 08 (sast-semgrep), in progress
-Implemented and committed locally (5 commits): installer `git` kind, lock entries `semgrep` 1.182.1 and `semgrep-rules` (commit `16b9e6d45f10649f6a531ec4838ed9924372c3bc`), `factory/stages/sast_semgrep.py`, `semgrep-rules/rulesets.yml`, 8 custom rules with tests, `sast-semgrep` job, `semgrep-rules` selftest job. NOT pushed: the push was denied by the auto mode classifier, so no CI results yet. Custom rules were written without running Semgrep locally and may need fixes after the first `semgrep --test` run.
+### 2026-10-28, chunk 08 (sast-semgrep)
+Added the installer `git` kind, lock entries, `factory/stages/sast_semgrep.py`, `semgrep-rules/rulesets.yml`, 4 web and 4 Swift custom rules with tests, `tests/test_sast_semgrep.py`, the `sast-semgrep` job (gate needs it), the `semgrep-rules` selftest job and Make targets `sast-semgrep`, `semgrep-test`. First CI runs failed on unquoted YAML colons and one Swift rule; fixed.
+- selftest run `40789127549`: `test`, `semgrep-rules`, `lint-workflows`, `secrets-integration`, `macos-smoke` all `success`; `271 passed, 1 skipped`. Pass.
+- `semgrep-rules` log: `8/8: All tests passed` from `semgrep --test semgrep-rules/custom`. Pass.
+- `factory-test-web` run `40789215539` (workflow_dispatch): `setup`, `hello-ai`, `secrets`, `sast-semgrep`, `passthrough`, `gate` all `success`; artifact `sast-semgrep` has `semgrep.sarif` and `findings.json` (`[]`, the clean app has none). Pass.
+- `sast-semgrep` job log shows `semgrep scan --metrics=off --disable-version-check --sarif ...` and `installed semgrep-rules 16b9e6d45f10649f6a531ec4838ed9924372c3bc`. Pass.
 
 ### 2026-10-28, chunk 07 (secrets-stage)
 Added `factory/stages/secrets.py`, `rules/gitleaks.toml`, `tests/test_secrets.py`, the `secrets` job in `factory.yml` (gate now needs it), the `secrets-integration` selftest job, Make target `secrets` and a Secrets stage section in `docs/pipeline.md`. Pushed with owner pre-approval.
