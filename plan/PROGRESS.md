@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 06 are done. First check: why `hello-ai` failed in scratch run `40759002513` (see notes). AI stage chunks can now call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for other dependencies.
+Chunks 00 to 06 are done. Chunk 07 (secrets-stage) and the other stage chunks can now plug into `.github/workflows/factory.yml` and the stub gate. Check `plan/00-index.md` for dependencies. AI stage chunks can now call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for other dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -114,7 +114,8 @@ Chunks 00 to 06 are done. First check: why `hello-ai` failed in scratch run `407
 - Gate fails closed: only `success` passes (or `skipped` for `--optional` jobs), every successful job except `setup` must leave `findings.json`. `hello-ai` writes an empty one.
 - Workflow-level `PYTHONSAFEPATH=1` stops project code (checked out at workspace root) shadowing `factory`, `yaml` or `pip`. Keep it in every job that runs Python next to project code.
 - New pin: `actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333` (v8.0.2). Artifacts download to `in/<name>/`.
-- Open: in scratch run `40759002513` (factory-test-web) `hello-ai` failed; not investigated (usage limit). The main run passed twice. Also open: automated review suggests the gate surface optional skips as notes or findings and replace the `echo '[]'` in hello-ai; consider in chunk 11. Stub keeps `@main` + `secrets: inherit` as the chunk requires (tradeoff: every repo secret reaches the factory workflow).
+- `hello-ai` failed in scratch run `40759002513` because the Claude Pro session limit was hit ("You've hit your session limit"). The adapter's usage-limit pattern missed that wording and exited 1; it now also matches session and weekly limits and exits 75.
+- The stub gate lists skipped optional jobs under its tables. For chunk 11: an automated review suggested turning skips of expected stages into `stage-missing` findings, and that `hello-ai`'s `echo '[]'` be replaced if hello-ai stays. Stub keeps `@main` + `secrets: inherit` as the chunk requires (tradeoff: every repo secret reaches the factory workflow).
 
 ## Session log
 
@@ -124,7 +125,7 @@ Added config schema and validator, run manifest, passthrough, stub gate, reusabl
 - Jobs `setup`, `passthrough`, `hello-ai`, `gate` all `success`. Pass.
 - `gh run download ... -n hello-ai`: `hello.json` `{"greeting": ..., "model": "claude-sonnet-5-5"}` matches `hello.schema.json`; meta `valid: true`. Pass.
 - Gate summary: `PASS`, all five severities 0. Pass.
-- Scratch branches with one `high` from passthrough: run `40759002513` gate `FAIL`, reason `1 critical or high finding(s)`. Both scratch branches deleted. Pass (but `hello-ai` also failed there, unexplained).
+- Scratch branches with one `high` from passthrough: run `40759002513` gate `FAIL`, reason `1 critical or high finding(s)`. Both scratch branches deleted. Pass (`hello-ai` also failed there: Claude session limit; adapter now exits 75 for it).
 
 ### 2026-10-28, chunk 04 (model-adapter)
 Added `factory/adapter/{__init__,__main__,claude_code,fake}.py`, `prompts/hello.md`, `schemas/hello.schema.json`, `.github/workflows/adapter-smoke.yml`, `tests/test_adapter.py`, `docs/adapter.md` and the `claude-code` lock entry. Flags read from local `claude --help` (2.1.286) and re-checked against the pinned 2.1.308 in the smoke workflow. Owner approved the push and the smoke run.
