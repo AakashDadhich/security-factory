@@ -1,0 +1,26 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:9b1d2f0e-7c55-4b8e-8d4f-5a7c3e2b1f10",
+  "version": 1,
+  "metadata": {
+    "component": { "type": "application", "name": "factory-test-web", "version": "0.2.0" }
+  },
+  "components": [
+    { "type": "library", "name": "express", "version": "4.21.0", "purl": "pkg:npm/express@4.21.0" },
+    { "type": "library", "group": "@types", "name": "node", "version": "20.11.0", "purl": "pkg:npm/%40types/node@20.11.0" },
+    { "type": "library", "name": "lodash", "version": "4.17.21", "purl": "pkg:npm/lodash@4.17.21?vcs_url=git%2Bhttps://github.com/lodash/lodash" },
+    { "type": "library", "name": "debug", "version": "4.3.4", "purl": "pkg:npm/debug@4.3.4" },
+    {
+      "type": "library",
+      "name": "body-parser",
+      "version": "1.20.2",
+      "purl": "pkg:npm/body-parser@1.20.2",
+      "components": [
+        { "type": "library", "name": "qs", "version": "6.11.0", "purl": "pkg:npm/qs@6.11.0" }
+      ]
+    },
+    { "type": "library", "name": "helmet", "version": "7.1.0", "purl": "pkg:npm/helmet@7.1.0" },
+    { "type": "library", "name": "debug", "version": "1.0.0", "purl": "pkg:pypi/debug@1.0.0" }
+  ]
+}

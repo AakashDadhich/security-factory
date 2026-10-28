@@ -1,0 +1,41 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "osv-scanner",
+          "rules": [
+            {
+              "id": "GHSA-rv95-896h-c2vc",
+              "shortDescription": {"text": "GHSA-rv95-896h-c2vc"},
+              "fullDescription": {"text": "Express.js Open Redirect in malformed URLs"},
+              "help": {"text": "Upgrade express to 4.19.2 or later."},
+              "properties": {"security-severity": "6.1"}
+            },
+            {
+              "id": "GHSA-aaaa-bbbb-cccc",
+              "shortDescription": {"text": "GHSA-aaaa-bbbb-cccc"},
+              "fullDescription": {"text": "Prototype pollution in lodash"},
+              "properties": {"security-severity": "9.1"}
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "GHSA-rv95-896h-c2vc",
+          "level": "error",
+          "message": {"text": "Package 'express@4.17.1' is vulnerable to 'GHSA-rv95-896h-c2vc' (also known as 'CVE-2024-29041')."},
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "package-lock.json"}}}]
+        },
+        {
+          "ruleId": "GHSA-aaaa-bbbb-cccc",
+          "level": "error",
+          "message": {"text": "Package 'lodash@4.17.0' is vulnerable to 'GHSA-aaaa-bbbb-cccc'."},
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "package-lock.json"}}}]
+        }
+      ]
+    }
+  ]
+}

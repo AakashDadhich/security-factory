@@ -1,0 +1,39 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Grype",
+          "rules": [
+            {
+              "id": "CVE-2024-29041-express",
+              "shortDescription": {"text": "CVE-2024-29041 low vulnerability for express package"},
+              "fullDescription": {"text": "CVE-2024-29041 low vulnerability in npm package express"},
+              "properties": {"security-severity": "7.5"}
+            },
+            {
+              "id": "CVE-2023-0001-left-pad",
+              "shortDescription": {"text": "CVE-2023-0001 low vulnerability for left-pad package"},
+              "properties": {"security-severity": "3.1"}
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CVE-2024-29041-express",
+          "level": "warning",
+          "message": {"text": "A High vulnerability in npm package: express, version 4.17.1 was found at: /package-lock.json"},
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "sbom.cdx.json"}}}]
+        },
+        {
+          "ruleId": "CVE-2023-0001-left-pad",
+          "level": "note",
+          "message": {"text": "A Low vulnerability in npm package: left-pad, version 1.3.0 was found at: /package-lock.json"},
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "sbom.cdx.json"}}}]
+        }
+      ]
+    }
+  ]
+}
