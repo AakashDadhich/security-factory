@@ -14,7 +14,12 @@ runs:
       run: |
         factory_dir="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
         python -m pip install -r "$factory_dir/requirements-dev.txt"
-        echo "PYTHONPATH=$factory_dir${PYTHONPATH:+:$PYTHONPATH}" >> "$GITHUB_ENV"
-        echo "FACTORY_DIR=$factory_dir" >> "$GITHUB_ENV"
+        site_dir="$(python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
+        echo "$factory_dir" > "$site_dir/security-factory.pth"
+        python -c 'import factory, sys; print("factory", factory.__version__, "from", factory.__file__)'
+    # The only value written is the literal $HOME/.factory/bin, never workflow input.
+    - name: Put factory tools on PATH
+      shell: bash
+      run: | # zizmor: ignore[github-env]
         mkdir -p "$HOME/.factory/bin"
         echo "$HOME/.factory/bin" >> "$GITHUB_PATH"
