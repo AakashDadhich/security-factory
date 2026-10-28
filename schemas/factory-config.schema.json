@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/factory-config.schema.json",
+  "title": "Project factory config",
+  "description": "The .factory.yml file in each project repo.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["platform"],
+  "properties": {
+    "platform": {
+      "enum": ["web", "macos", "ios"]
+    },
+    "asvs_level": {
+      "description": "1, 2 or 3. null or absent means the default rule (D2): level 2.",
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 3
+    },
+    "web": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port", "health_path", "dockerfile"],
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "health_path": {
+          "type": "string",
+          "pattern": "^/[^\\s]*$"
+        },
+        "openapi": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "dockerfile": {
+          "$ref": "#/$defs/relative_path"
+        }
+      }
+    },
+    "apple": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_spec", "scheme"],
+      "properties": {
+        "project_spec": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "scheme": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9 ._-]+$"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"platform": {"const": "web"}}},
+      "then": {"required": ["web"]}
+    },
+    {
+      "if": {"properties": {"platform": {"enum": ["macos", "ios"]}}},
+      "then": {"required": ["apple"]}
+    }
+  ],
+  "$defs": {
+    "relative_path": {
+      "description": "A path inside the repo: not absolute, no '..' segments, no whitespace other than spaces.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!(.*/)?\\.\\.(/|$))[^\\t\\n\\r]+$"
+    }
+  }
+}
