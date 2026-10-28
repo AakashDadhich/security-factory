@@ -16,7 +16,8 @@ from pathlib import Path
 LOCK_PATH = Path(__file__).resolve().parent.parent / "tools" / "versions.lock"
 BIN_DIR = Path.home() / ".factory" / "bin"
 
-KINDS = ("binary", "pipx", "npm", "container")
+KINDS = ("binary", "pipx", "npm", "container", "git")
+GIT_DIR = Path.home() / ".factory"
 ARCHIVES = ("tar.gz", "zip", "none")
 PLATFORM_FIELDS = ("url", "sha256", "archive", "bin")
 
@@ -32,6 +33,8 @@ class Tool:
     kind: str
     package: str | None = None
     image: str | None = None
+    repo: str | None = None
+    commit: str | None = None
     platforms: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
@@ -65,6 +68,13 @@ def _validate(entry: dict) -> Tool:
         image = entry.get("image", "")
         if "@sha256:" not in image:
             raise ToolError(f"{name}: container image must be pinned with an @sha256: digest")
+    if kind == "git":
+        repo = entry.get("repo", "")
+        commit = entry.get("commit", "")
+        if not repo.startswith("https://"):
+            raise ToolError(f"{name}: git repo must use https")
+        if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
+            raise ToolError(f"{name}: git commit must be a full 40 character lowercase hex SHA")
 
     return Tool(
         name=name,
@@ -72,6 +82,8 @@ def _validate(entry: dict) -> Tool:
         kind=kind,
         package=entry.get("package"),
         image=entry.get("image"),
+        repo=entry.get("repo"),
+        commit=entry.get("commit"),
         platforms=platforms,
     )
 
@@ -194,6 +206,18 @@ def _run(cmd: list[str]) -> None:
         raise ToolError(f"command failed with exit code {result.returncode}: {' '.join(cmd)}")
 
 
+def install_git(tool: Tool, dest: Path | None = None, run=_run) -> Path:
+    dest = dest or GIT_DIR / tool.name
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    git = ["git", "-C", str(dest)]
+    run(git + ["init", "--quiet"])
+    run(git + ["fetch", "--quiet", "--depth", "1", tool.repo, tool.commit])
+    run(git + ["-c", "advice.detachedHead=false", "checkout", "--quiet", "FETCH_HEAD"])
+    return dest
+
+
 def install(tool: Tool, platform_key: str, bin_dir: Path | None = None) -> None:
     package = tool.package or tool.name
     if tool.kind == "binary":
@@ -205,6 +229,9 @@ def install(tool: Tool, platform_key: str, bin_dir: Path | None = None) -> None:
         _run(["npm", "install", "-g", f"{package}@{tool.version}"])
     elif tool.kind == "container":
         _run(["docker", "pull", tool.image])
+    elif tool.kind == "git":
+        target = install_git(tool)
+        print(f"installed {tool.name} {tool.commit} to {target}")
 
 
 def describe(tool: Tool) -> str:
@@ -212,6 +239,8 @@ def describe(tool: Tool) -> str:
         detail = ", ".join(sorted(tool.platforms))
     elif tool.kind == "container":
         detail = tool.image
+    elif tool.kind == "git":
+        detail = f"{tool.repo}@{tool.commit}"
     else:
         detail = tool.package or tool.name
     return f"{tool.name}\t{tool.version}\t{tool.kind}\t{detail}"

@@ -34,3 +34,15 @@ name = "claude-code"
 version = "2.1.308"
 kind = "npm"
 package = "@anthropic-ai/claude-code"
+
+[[tool]]
+name = "semgrep"
+version = "1.182.1"
+kind = "pipx"
+
+[[tool]]
+name = "semgrep-rules"
+version = "2026-10-21"
+kind = "git"
+repo = "https://github.com/semgrep/semgrep-rules"
+commit = "16b9e6d45f10649f6a531ec4838ed9924372c3bc"
