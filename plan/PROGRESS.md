@@ -35,7 +35,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 04 | model-adapter | done |
 | 05 | web-test-project | done |
 | 06 | walking-skeleton | done |
-| 07 | secrets-stage | todo |
+| 07 | secrets-stage | done |
 | 08 | sast-semgrep | todo |
 | 09 | sast-codeql-eslint-web | todo |
 | 10 | deps-and-sbom | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 06 are done. Chunk 07 (secrets-stage) and the other stage chunks can now plug into `.github/workflows/factory.yml` and the stub gate. Check `plan/00-index.md` for dependencies. AI stage chunks can now call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for other dependencies.
+Chunks 00 to 07 are done. Next in order is chunk 08 (sast-semgrep); 09, 10, 12 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, and adds `--stage <name>` to the manifest step in `setup`. AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -116,8 +116,17 @@ Chunks 00 to 06 are done. Chunk 07 (secrets-stage) and the other stage chunks ca
 - New pin: `actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333` (v8.0.2). Artifacts download to `in/<name>/`.
 - `hello-ai` failed in scratch run `40759002513` because the Claude Pro session limit was hit ("You've hit your session limit"). The adapter's usage-limit pattern missed that wording and exited 1; it now also matches session and weekly limits and exits 75.
 - The stub gate lists skipped optional jobs under its tables. For chunk 11: an automated review suggested turning skips of expected stages into `stage-missing` findings, and that `hello-ai`'s `echo '[]'` be replaced if hello-ai stays. Stub keeps `@main` + `secrets: inherit` as the chunk requires (tradeoff: every repo secret reaches the factory workflow).
+- Secrets stage (chunk 07): `python -m factory.stages.secrets --repo . --out out/secrets [--gitleaks <bin>]` (`make secrets`). Module `factory/stages/secrets.py`, config `rules/gitleaks.toml`. Runs `gitleaks git` with `--redact=100 --exit-code 99`: 99 means leaks (findings), 0 clean, anything else fails the stage (Gitleaks also exits 1 on its own errors, hence the custom code). Gitleaks findings are forced to `high` with CWE-798; `committed-env-file` checks are source `check`, tool `factory`, CWE-540. Secrets job needs `fetch-depth: 0` on the project checkout. `secrets` is a required (not optional) gate job. The same secret at one path and line across commits collapses to one finding (fingerprint has no commit).
+- Integration test `test_integration_real_gitleaks_finds_secret_and_env_file` skips when gitleaks is missing unless `FACTORY_REQUIRE_GITLEAKS` is set (selftest `secrets-integration` sets it, and `FACTORY_SECRETS_IT_OUT` to keep the SARIF for the REDACTED check). The fake key is generated at test time with entropy above 3.7 and no 3-letter hex runs so Gitleaks' generic rule fires reliably.
 
 ## Session log
+
+### 2026-10-28, chunk 07 (secrets-stage)
+Added `factory/stages/secrets.py`, `rules/gitleaks.toml`, `tests/test_secrets.py`, the `secrets` job in `factory.yml` (gate now needs it), the `secrets-integration` selftest job, Make target `secrets` and a Secrets stage section in `docs/pipeline.md`. Pushed with owner pre-approval.
+- selftest run `40788074302`: `test`, `secrets-integration`, `lint-workflows`, `macos-smoke` all `success`; `249 passed, 1 skipped` (skip is the integration test in the plain `test` job, which has no Gitleaks). Pass.
+- `secrets-integration` log: `test_integration_real_gitleaks_finds_secret_and_env_file PASSED`, `2 findings` (`generic-api-key` scanner, `committed-env-file` check). Pass.
+- Same job: `grep -c REDACTED gitleaks.sarif` printed `1` and the test asserts the fake key is absent from the SARIF. Pass.
+- `factory-test-web` run `40788134508` (workflow_dispatch): `setup`, `hello-ai`, `passthrough`, `secrets`, `gate` all `success`; downloaded `secrets` artifact has `findings.json` = `[]` and `gitleaks.sarif`. Pass.
 
 ### 2026-10-28, chunk 06 (walking-skeleton)
 Added config schema and validator, run manifest, passthrough, stub gate, reusable workflow, stub template, `docs/pipeline.md`; stub committed to `factory-test-web`. Owner approved pushes. Fixed two automated-review issues (fail-closed gate, `PYTHONSAFEPATH`). Selftest `40758674587` green, `222 passed`, actionlint 0 errors, zizmor no findings.
