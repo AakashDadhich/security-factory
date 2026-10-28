@@ -339,3 +339,56 @@ def test_main_list(capsys):
     out = capsys.readouterr().out
     assert "gitleaks\t8.30.1\tbinary\tlinux-x64" in out
     assert "zizmor\t1.31.1\tpipx\tzizmor" in out
+
+
+GIT_SHA = "a" * 40
+
+
+def test_real_lock_has_semgrep_and_pinned_rules():
+    lock = tools.load_lock()
+    assert lock["semgrep"].kind == "pipx"
+    assert lock["semgrep-rules"].kind == "git"
+    assert len(lock["semgrep-rules"].commit) == 40
+
+
+@pytest.mark.parametrize(
+    "body, message",
+    [
+        (f'repo = "http://example.com/r"\ncommit = "{GIT_SHA}"', "must use https"),
+        ('repo = "https://example.com/r"\ncommit = "main"', "40 character"),
+        (f'repo = "https://example.com/r"\ncommit = "{GIT_SHA.upper()}"', "40 character"),
+        (f'commit = "{GIT_SHA}"', "must use https"),
+    ],
+)
+def test_git_entry_rejects_bad_repo_or_commit(tmp_path, body, message):
+    lock = write_lock(tmp_path, f'[[tool]]\nname = "g"\nversion = "1"\nkind = "git"\n{body}\n')
+    with pytest.raises(ToolError, match=message):
+        tools.load_lock(lock)
+
+
+def test_git_entry_parses(tmp_path):
+    lock = write_lock(tmp_path, f'[[tool]]\nname = "g"\nversion = "1"\nkind = "git"\nrepo = "https://example.com/r"\ncommit = "{GIT_SHA}"\n')
+    tool = tools.load_lock(lock)["g"]
+    assert (tool.repo, tool.commit) == ("https://example.com/r", GIT_SHA)
+    assert tools.describe(tool) == f"g\t1\tgit\thttps://example.com/r@{GIT_SHA}"
+
+
+def test_install_git_fetches_the_exact_commit_shallowly(tmp_path):
+    tool = Tool("g", "1", "git", repo="https://example.com/r", commit=GIT_SHA)
+    calls = []
+    dest = tmp_path / "g"
+    dest.mkdir()
+    (dest / "stale").write_text("old")
+    result = tools.install_git(tool, dest, run=calls.append)
+    assert result == dest
+    assert not (dest / "stale").exists()
+    flat = [" ".join(c) for c in calls]
+    assert any("fetch" in c and "--depth 1 https://example.com/r " + GIT_SHA in c for c in flat)
+    assert any("checkout" in c and "FETCH_HEAD" in c for c in flat)
+
+
+def test_install_dispatches_git(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(tools, "install_git", lambda tool: seen.append(tool.name) or tmp_path)
+    tools.install(Tool("g", "1", "git", repo="https://example.com/r", commit=GIT_SHA), "")
+    assert seen == ["g"]
