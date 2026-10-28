@@ -4,6 +4,8 @@ A push to a project repo wakes its stub (`.github/workflows/factory.yml`, copied
 
 Every job checks out the factory at `inputs.factory-ref` into `.factory/` and runs `./.factory/.github/actions/setup-factory`. Results travel between jobs only as artifacts, one per stage, named after the stage.
 
+The project is checked out at the workspace root, so it is untrusted code sitting in the current directory. The workflow sets `PYTHONSAFEPATH=1` for every job so `python -m` never imports a project's own `factory/`, `yaml.py` or `pip/` instead of the factory's. The `setup` job reads the Claude token before it checks out the project.
+
 ## Current job graph (walking skeleton)
 
 ```mermaid
@@ -22,7 +24,7 @@ flowchart LR
 |---|---|---|
 | `setup` | Checks out the project and the factory, validates the config with `python -m factory.config`, writes the run manifest with `python -m factory.manifest create`, checks whether `CLAUDE_CODE_OAUTH_TOKEN` is set | `setup` (`run-manifest.json`) |
 | `passthrough` | Trivial stage: `python -m factory.passthrough` reads the manifest and writes an empty `findings.json` | `passthrough` |
-| `hello-ai` | Only when the Claude token is present: installs claude-code and runs the hello prompt through `python -m factory.adapter` | `hello-ai` (`hello.json`, `hello.json.meta.json`) |
+| `hello-ai` | Only when the Claude token is present: installs claude-code and runs the hello prompt through `python -m factory.adapter`, then writes an empty `findings.json` | `hello-ai` (`hello.json`, `hello.json.meta.json`, `findings.json`) |
 | `gate` | Always runs. Downloads every artifact into `in/<artifact>/` and runs `python -m factory.gate` | none |
 
 ## Workflow inputs
@@ -41,10 +43,10 @@ Secret `CLAUDE_CODE_OAUTH_TOKEN` is optional. Without it, `hello-ai` is skipped 
 
 ## Gate (stub)
 
-`python -m factory.gate --artifacts in --needs "$NEEDS"`, where `NEEDS` is `toJSON(needs)`:
+`python -m factory.gate --artifacts in --needs "$NEEDS" --optional hello-ai`, where `NEEDS` is `toJSON(needs)`:
 
 - validates every `in/*/findings.json` against the findings schema,
 - counts findings by severity and writes a Markdown table to `$GITHUB_STEP_SUMMARY` (and stdout),
-- exits 1 if any finding is `critical` or `high`, any findings file is invalid, or any needed job ended `failure` or `cancelled`. A `skipped` job (for example `hello-ai` with no token) doesn't fail the gate.
+- fails closed. It exits 1 if any finding is `critical` or `high`, any findings file is invalid, `--needs` is empty, any needed job ended with anything but `success` (a job named with `--optional` may also be `skipped`), or any successful job other than `setup` left no `findings.json`.
 
 Chunk 11 replaces this stub with the real gate and report.

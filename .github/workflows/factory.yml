@@ -18,6 +18,11 @@ on:
 
 permissions: {}
 
+# Project code is checked out at the workspace root; without this, `python -m`
+# would import a project's own `factory/`, `yaml.py` or `pip/` ahead of ours.
+env:
+  PYTHONSAFEPATH: "1"
+
 jobs:
   setup:
     runs-on: ubuntu-24.04
@@ -30,6 +35,14 @@ jobs:
       openapi: ${{ steps.config.outputs.openapi }}
       has-claude: ${{ steps.claude.outputs.present }}
     steps:
+      - name: check for Claude token
+        id: claude
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then present=true; else present=false; fi
+          echo "present=$present" >> "$GITHUB_OUTPUT"
+          echo "Claude token present: $present"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -55,14 +68,6 @@ jobs:
           --config "$CONFIG_PATH" --mode "$MODE" --factory-ref "$FACTORY_REF"
           --stage passthrough --stage hello-ai --stage gate
           --out out/setup/run-manifest.json
-      - name: check for Claude token
-        id: claude
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: |
-          if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then present=true; else present=false; fi
-          echo "present=$present" >> "$GITHUB_OUTPUT"
-          echo "Claude token present: $present"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: setup
@@ -121,6 +126,7 @@ jobs:
           --prompt .factory/prompts/hello.md
           --schema .factory/schemas/hello.schema.json
           --out out/hello-ai/hello.json
+      - run: echo '[]' > out/hello-ai/findings.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -149,4 +155,4 @@ jobs:
       - name: gate
         env:
           NEEDS: ${{ toJSON(needs) }}
-        run: python -m factory.gate --artifacts in --needs "$NEEDS"
+        run: python -m factory.gate --artifacts in --needs "$NEEDS" --optional hello-ai
