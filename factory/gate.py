@@ -8,7 +8,7 @@ from factory import findings
 from factory.findings import SEVERITIES, FindingsError
 
 BLOCKING = ("critical", "high")
-FAILED_RESULTS = ("failure", "cancelled")
+SETUP_JOB = "setup"
 
 
 def collect(artifacts_dir: str | Path) -> tuple[dict[str, list], list[str]]:
@@ -31,14 +31,25 @@ def count(items: list) -> dict[str, int]:
     return counts
 
 
-def failed_jobs(needs: dict) -> list[str]:
-    return sorted(name for name, job in needs.items() if job.get("result") in FAILED_RESULTS)
+def job_problems(needs: dict, optional: set[str], by_stage: dict[str, list]) -> list[str]:
+    if not needs:
+        return ["no needed jobs were reported"]
+    problems = []
+    for name, job in sorted(needs.items()):
+        result = job.get("result") if isinstance(job, dict) else None
+        if result == "skipped" and name in optional:
+            continue
+        if result != "success":
+            problems.append(f"job `{name}` {result or 'has no result'}")
+        elif name != SETUP_JOB and name not in by_stage:
+            problems.append(f"job `{name}` succeeded but left no findings.json")
+    return problems
 
 
-def evaluate(by_stage: dict[str, list], errors: list[str], needs: dict) -> dict:
+def evaluate(by_stage: dict[str, list], errors: list[str], needs: dict, optional: set[str] = frozenset()) -> dict:
     counts = count([f for items in by_stage.values() for f in items])
     reasons = [f"invalid findings: {e}" for e in errors]
-    reasons += [f"job `{name}` {needs[name]['result']}" for name in failed_jobs(needs)]
+    reasons += job_problems(needs, optional, by_stage)
     blocking = sum(counts[s] for s in BLOCKING)
     if blocking:
         reasons.append(f"{blocking} critical or high finding(s)")
@@ -53,7 +64,7 @@ def summary(result: dict, by_stage: dict[str, list], needs: dict) -> str:
     lines += [f"| {stage} | {len(items)} |" for stage, items in sorted(by_stage.items())] or ["| (none) | 0 |"]
     if needs:
         lines += ["", "| Job | Result |", "|---|---|"]
-        lines += [f"| {name} | {job.get('result', 'unknown')} |" for name, job in sorted(needs.items())]
+        lines += [f"| {name} | {job.get('result') if isinstance(job, dict) else None} |" for name, job in sorted(needs.items())]
     if result["reasons"]:
         lines += ["", "Reasons:"] + [f"- {r}" for r in result["reasons"]]
     return "\n".join(lines) + "\n"
@@ -62,15 +73,19 @@ def summary(result: dict, by_stage: dict[str, list], needs: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m factory.gate", description="Stub gate: validate findings, count by severity, block on critical or high")
     parser.add_argument("--artifacts", required=True, help="folder holding one sub-folder per downloaded artifact")
-    parser.add_argument("--needs", default="{}", help="JSON of the workflow `needs` context")
+    parser.add_argument("--needs", required=True, help="JSON of the workflow `needs` context")
+    parser.add_argument("--optional", action="append", default=[], help="job that may be skipped (repeatable)")
     args = parser.parse_args(argv)
     try:
         needs = json.loads(args.needs)
     except json.JSONDecodeError as e:
         print(f"error: --needs is not valid JSON: {e}", file=sys.stderr)
         return 1
+    if not isinstance(needs, dict):
+        print("error: --needs must be a JSON object", file=sys.stderr)
+        return 1
     by_stage, errors = collect(args.artifacts)
-    result = evaluate(by_stage, errors, needs)
+    result = evaluate(by_stage, errors, needs, set(args.optional))
     text = summary(result, by_stage, needs)
     sys.stdout.write(text)
     summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
