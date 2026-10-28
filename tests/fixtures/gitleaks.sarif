@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "gitleaks",
+          "semanticVersion": "v8.30.1",
+          "informationUri": "https://github.com/gitleaks/gitleaks",
+          "rules": [
+            {
+              "id": "aws-access-token",
+              "shortDescription": { "text": "Identified a pattern that may indicate AWS credentials, risking unauthorized cloud resource access and data breaches on AWS platforms." }
+            },
+            {
+              "id": "generic-api-key",
+              "shortDescription": { "text": "Detected a Generic API Key, potentially exposing access to various services and sensitive operations." }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "message": { "text": "aws-access-token has detected secret for file config/settings.py." },
+          "ruleId": "aws-access-token",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "config/settings.py" },
+                "region": { "startLine": 3, "startColumn": 14, "endLine": 3, "endColumn": 34, "snippet": { "text": "REDACTED" } }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "commitSha": "1111111111111111111111111111111111111111",
+            "email": "dev@example.com",
+            "author": "dev",
+            "date": "2026-10-01T10:00:00Z",
+            "commitMessage": "add settings"
+          }
+        },
+        {
+          "message": { "text": "generic-api-key has detected secret for file web/.env.example." },
+          "ruleId": "generic-api-key",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "web/.env.example" },
+                "region": { "startLine": 7, "startColumn": 1, "endLine": 7, "endColumn": 40, "snippet": { "text": "REDACTED" } }
+              }
+            }
+          ],
+          "partialFingerprints": {}
+        }
+      ]
+    }
+  ]
+}

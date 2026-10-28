@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL",
+          "organization": "GitHub",
+          "semanticVersion": "2.20.0",
+          "rules": []
+        },
+        "extensions": [
+          {
+            "name": "codeql/javascript-queries",
+            "semanticVersion": "1.0.0",
+            "rules": [
+              {
+                "id": "js/sql-injection",
+                "name": "js/sql-injection",
+                "shortDescription": { "text": "Database query built from user-controlled sources" },
+                "fullDescription": { "text": "Building a database query from user-controlled sources is vulnerable to insertion of malicious code by the user." },
+                "defaultConfiguration": { "enabled": true, "level": "error" },
+                "help": { "text": "Use a parameterised query or prepared statement." },
+                "properties": {
+                  "tags": ["security", "external/cwe/cwe-089", "external/cwe/cwe-090", "external/cwe/cwe-943"],
+                  "kind": "path-problem",
+                  "precision": "high",
+                  "security-severity": "8.1"
+                }
+              },
+              {
+                "id": "js/reflected-xss",
+                "name": "js/reflected-xss",
+                "shortDescription": { "text": "Reflected cross-site scripting" },
+                "defaultConfiguration": { "enabled": true, "level": "error" },
+                "help": { "text": "Escape user input before writing it to the response." },
+                "properties": {
+                  "tags": ["security", "external/cwe/cwe-079", "external/cwe/cwe-116"],
+                  "security-severity": "6.1"
+                }
+              },
+              {
+                "id": "js/hardcoded-credentials",
+                "name": "js/hardcoded-credentials",
+                "shortDescription": { "text": "Hard-coded credentials" },
+                "defaultConfiguration": { "enabled": true, "level": "warning" },
+                "properties": {
+                  "tags": ["security", "external/cwe/cwe-259", "external/cwe/cwe-321", "external/cwe/cwe-798"],
+                  "security-severity": "9.8"
+                }
+              },
+              {
+                "id": "js/insecure-randomness",
+                "name": "js/insecure-randomness",
+                "shortDescription": { "text": "Insecure randomness" },
+                "defaultConfiguration": { "enabled": true, "level": "warning" },
+                "properties": {
+                  "tags": ["security", "external/cwe/cwe-338"],
+                  "security-severity": "3.2"
+                }
+              },
+              {
+                "id": "js/unused-local-variable",
+                "name": "js/unused-local-variable",
+                "shortDescription": { "text": "Unused variable, import, function or class" },
+                "defaultConfiguration": { "enabled": true, "level": "note" },
+                "properties": { "tags": ["maintainability"] }
+              }
+            ]
+          }
+        ]
+      },
+      "results": [
+        {
+          "ruleId": "js/sql-injection",
+          "rule": { "id": "js/sql-injection", "index": 0, "toolComponent": { "index": 0 } },
+          "message": { "text": "This query string depends on a [user-provided value](1)." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/routes/users.js", "uriBaseId": "%SRCROOT%", "index": 0 },
+                "region": { "startLine": 27, "startColumn": 20, "endColumn": 64 }
+              }
+            }
+          ],
+          "partialFingerprints": { "primaryLocationLineHash": "abcd1234:1" }
+        },
+        {
+          "ruleId": "js/reflected-xss",
+          "rule": { "id": "js/reflected-xss", "index": 1, "toolComponent": { "index": 0 } },
+          "message": { "text": "Cross-site scripting vulnerability due to a [user-provided value](1)." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/routes/search.js", "uriBaseId": "%SRCROOT%", "index": 1 },
+                "region": { "startLine": 15, "endLine": 17 }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "js/hardcoded-credentials",
+          "rule": { "id": "js/hardcoded-credentials", "index": 2, "toolComponent": { "index": 0 } },
+          "message": { "text": "The hard-coded value \"hunter2\" is used as password." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/config.js", "uriBaseId": "%SRCROOT%", "index": 2 },
+                "region": { "startLine": 4 }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "js/insecure-randomness",
+          "rule": { "id": "js/insecure-randomness", "index": 3, "toolComponent": { "index": 0 } },
+          "message": { "text": "Math.random() is used to generate a session token." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/session.js", "uriBaseId": "%SRCROOT%", "index": 3 },
+                "region": { "startLine": 9 }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "js/unused-local-variable",
+          "rule": { "id": "js/unused-local-variable", "index": 4, "toolComponent": { "index": 0 } },
+          "message": { "text": "Unused variable tmp." },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/session.js", "uriBaseId": "%SRCROOT%", "index": 3 },
+                "region": { "startLine": 2 }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "js/sql-injection",
+          "kind": "pass",
+          "rule": { "id": "js/sql-injection", "index": 0, "toolComponent": { "index": 0 } },
+          "message": { "text": "No issue." }
+        }
+      ]
+    }
+  ]
+}
