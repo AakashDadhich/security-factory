@@ -1,0 +1,5 @@
+rules:
+  # The `uses: $/...` self-repository syntax isn't supported by actionlint yet
+  # (rhysd/actionlint#711), so local actions keep the `./` form for now.
+  self-repository:
+    disable: true

@@ -35,7 +35,7 @@ jobs:
       - name: zizmor
         env:
           GH_TOKEN: ${{ github.token }}
-        run: zizmor --format plain .github/workflows .github/actions
+        run: zizmor --format plain --config .github/zizmor.yml .github/workflows .github/actions
 
   macos-smoke:
     runs-on: macos-15
