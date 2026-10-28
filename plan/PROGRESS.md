@@ -32,7 +32,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 01 | factory-skeleton | done |
 | 02 | pinned-tool-installer | done |
 | 03 | data-contracts | done |
-| 04 | model-adapter | todo |
+| 04 | model-adapter | done |
 | 05 | web-test-project | done |
 | 06 | walking-skeleton | todo |
 | 07 | secrets-stage | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 02, 03 and 05 are done. Chunk 04 (model-adapter) can start now, and 06 (walking-skeleton) can run against `factory-test-web`. Stage chunks can now build on the data contracts in `docs/contracts.md`. Check `plan/00-index.md` for other dependencies.
+Chunks 00 to 05 are done. Chunk 06 (walking-skeleton) can run against `factory-test-web`. AI stage chunks can now call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for other dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -103,8 +103,21 @@ Chunks 02, 03 and 05 are done. Chunk 04 (model-adapter) can start now, and 06 (w
 - Test web `app-ci.yml`: job `build-and-test` on `ubuntu-24.04`, top-level `permissions: {}`, job `contents: read`. Pins: checkout v7.0.1 (as above), `actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1` (v7.1.0, `package-manager-cache: false`). Steps `npm ci`, `npm test`, `docker build --tag factory-test-web:ci .`.
 - Test web Dependabot ignores semver-major bumps of the `node` image and `@types/node` (owner chose to stay on Node 22, maintenance LTS until April 2027). Odd Node majors (e.g. 25) are never LTS.
 - No Node, npm or Docker on the owner's Mac. Lockfiles get generated in CI: push a throwaway branch with a workflow that runs `npm install --package-lock-only --ignore-scripts` and uploads the file, then `gh run download`. Pushing the first branch to an empty repo makes it the default branch, so push `main` first next time.
+- Model adapter (chunk 04): `python -m factory.adapter run --stage <s> --prompt <md> --input <path>... --schema <json> --out <file> [--workdir] [--allow-tools Read,Grep,Glob] [--allow-write]`. Writes `<out>` plus `<out>.meta.json` (`stage`, `adapter`, `model`, `duration_seconds`, `attempts`, `valid`, plus `num_turns`, `cli_duration_ms` from claude_code). On a still-invalid reply it writes `<out>.rejected.txt`. Exit codes: 0 ok, 1 error, 2 invalid after one retry, 75 usage limit, 124 timeout.
+- Adapter tools: only `Read`, `Grep`, `Glob` (default), plus `Edit`, `Write` with `--allow-write`. `Bash`, `WebFetch`, `WebSearch` are always refused, so a stage that must run commands (e.g. fix loop running tests) needs a deliberate adapter change.
+- Adapter env: `FACTORY_MODEL_ADAPTER` (default `claude_code`), `CLAUDE_CODE_OAUTH_TOKEN`, `FACTORY_CLAUDE_MODEL` (optional), `FACTORY_CLAUDE_TIMEOUT` (default 600 s), `FACTORY_CLAUDE_MAX_TURNS` (default 25), `FACTORY_FAKE_RESPONSES` (fake reads `<stage>.<attempt>.json` then `<stage>.json`). The claude child process gets only PATH, HOME, LANG, LC_ALL, TMPDIR, USER, CI, RUNNER_TEMP and the token.
+- claude-code pinned at 2.1.308 (npm `stable` tag on 2026-10-28; `latest` was 2.1.312). The adapter runs `claude --print --output-format json --restricted --tools ... --allowed-tools ... --disallowed-tools Bash,WebFetch,WebSearch --permission-mode dontAsk --strict-mcp-config --no-session-persistence --max-turns N`, prompt on stdin. With no `FACTORY_CLAUDE_MODEL` the CLI picked `claude-sonnet-5-5` in the smoke run.
+- New pin: `actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9` (v7.0.2). `.github/workflows/adapter-smoke.yml` is `workflow_dispatch` only and costs a little Pro allowance per run.
+- `gh run view --log` refuses while any job is still queued (e.g. macOS); read a finished job with `gh api repos/<repo>/actions/jobs/<job_id>/logs`.
 
 ## Session log
+
+### 2026-10-28, chunk 04 (model-adapter)
+Added `factory/adapter/{__init__,__main__,claude_code,fake}.py`, `prompts/hello.md`, `schemas/hello.schema.json`, `.github/workflows/adapter-smoke.yml`, `tests/test_adapter.py`, `docs/adapter.md` and the `claude-code` lock entry. Flags read from local `claude --help` (2.1.286) and re-checked against the pinned 2.1.308 in the smoke workflow. Owner approved the push and the smoke run.
+- Selftest run `40756115941`: `test`, `lint-workflows` and `macos-smoke` all `success`; `173 passed in 2.06s`, 41 of them in `test_adapter.py`, 0 failed. actionlint `Found total 0 errors` for `adapter-smoke.yml`; zizmor `No findings to report`. `macos-smoke` also `success` once a macOS runner freed up. Pass.
+- `gh workflow run adapter-smoke.yml` (run `40756159124`): `hello: success`. CLI `2.1.308 (Claude Code)`, `all flags present`. Artifact `hello` has `{"greeting": "Hello, Security Software Factory, glad to be working with you!", "model": "claude-sonnet-5-5"}`, validated against `schemas/hello.schema.json` in CI; meta `attempts: 1`, `valid: true`, 3.7 s. Pass.
+- `grep -n CLAUDE_CODE_OAUTH_TOKEN` on the smoke log: one hit, `CLAUDE_CODE_OAUTH_TOKEN: ***`; `grep -c sk-ant` is 0. Pass.
+- `FACTORY_MODEL_ADAPTER=fake`: `test_fake_adapter_returns_canned_reply PASSED`. Pass.
 (newest first: date, chunk, what was done, Done-when results)
 
 ### 2026-10-28, chunk 05 (web-test-project)
