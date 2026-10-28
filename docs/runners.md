@@ -12,7 +12,7 @@ Verified on 2026-10-27 against the sources listed at the end. Runner images upda
 | Docker | yes, client and server 28.0.4, Compose 2.38.2, Buildx 0.38.0 | no |
 | jq | yes, 1.7 | yes, 1.8.2 |
 | yq | yes, 4.54.1 | yes, 4.53.6 |
-| make | yes, GNU make 4.3 (apt package `4.3-4.1build2`) | not listed in the readme |
+| make | yes, GNU make 4.3 (apt package `4.3-4.1build2`) | yes, GNU Make 3.81 at `/usr/bin/make` (not in the readme; seen in selftest run `40746602330` on 2026-10-28) |
 | pipx | yes, 1.16.7 | yes, 1.17.2 |
 | Xcode | no | yes, 16.4 default (16F6); also 16.0 to 16.3 and 26.0.1 to 26.3; Command Line Tools 16.4 |
 | SwiftLint | no | no (not listed) |
@@ -22,7 +22,7 @@ Image versions read: `ubuntu-24.04` image `20261023.334.3`, `macos-15-arm64` ima
 
 What this means for later chunks:
 - macOS jobs have no Docker, so container-based tools (for example ZAP and MobSF) run on `ubuntu-24.04`.
-- `make` isn't listed for `macos-15`. macOS jobs should call `python -m factory.<module>` directly, or a chunk should check for `make` in a run before depending on it.
+- `make` isn't listed in the `macos-15` readme, but `/usr/bin/make` (GNU Make 3.81, from the Command Line Tools) is present. macOS jobs run `python -m factory.platform_check ensure-make` first (it installs GNU make with Homebrew if it's ever missing), then can use `make`.
 - SwiftLint isn't on either image, so it must be installed through `tools/versions.lock`.
 - The `ubuntu-latest` label moves to Ubuntu 26.04 in November 2026. The factory pins `ubuntu-24.04`, so it isn't affected.
 
