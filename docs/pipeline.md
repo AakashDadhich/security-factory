@@ -14,9 +14,11 @@ flowchart LR
     stub -->|workflow_call| setup
     setup -->|artifact: setup<br/>run-manifest.json| passthrough
     setup -->|has-claude == true| helloai[hello-ai]
+    setup --> secrets
     setup --> gate
     passthrough -->|artifact: passthrough<br/>findings.json| gate
     helloai -->|artifact: hello-ai<br/>hello.json| gate
+    secrets -->|artifact: secrets<br/>findings.json, gitleaks.sarif| gate
     gate{{gate<br/>if: always}}
 ```
 
@@ -25,7 +27,20 @@ flowchart LR
 | `setup` | Checks out the project and the factory, validates the config with `python -m factory.config`, writes the run manifest with `python -m factory.manifest create`, checks whether `CLAUDE_CODE_OAUTH_TOKEN` is set | `setup` (`run-manifest.json`) |
 | `passthrough` | Trivial stage: `python -m factory.passthrough` reads the manifest and writes an empty `findings.json` | `passthrough` |
 | `hello-ai` | Only when the Claude token is present: installs claude-code and runs the hello prompt through `python -m factory.adapter`, then writes an empty `findings.json` | `hello-ai` (`hello.json`, `hello.json.meta.json`, `findings.json`) |
+| `secrets` | Checks out the project with full history (`fetch-depth: 0`), installs the pinned Gitleaks and runs `python -m factory.stages.secrets`. See [Secrets stage](#secrets-stage) | `secrets` (`findings.json`, `gitleaks.sarif`) |
 | `gate` | Always runs. Downloads every artifact into `in/<artifact>/` and runs `python -m factory.gate` | none |
+
+## Secrets stage
+
+`python -m factory.stages.secrets --repo . --out out/secrets` (or `make secrets`):
+
+- runs `gitleaks git` over the whole history with `rules/gitleaks.toml` (Gitleaks defaults via `[extend] useDefault = true`), SARIF output to `out/secrets/gitleaks.sarif`, and `--redact=100` so the SARIF never holds a secret value,
+- passes `--exit-code 99` because Gitleaks also exits 1 on its own errors. Exit 99 means leaks were found (findings, not a failure); any other non-zero exit fails the stage,
+- turns every Gitleaks result into a `high` finding (D9: every committed secret counts, live or not), with CWE-798 and rotation advice,
+- adds a `check` finding (`committed-env-file`, `high`, CWE-540) for each tracked file matching `(^|/)\.env(\.[^/]*)?$` except `.env.example` (D10),
+- writes `out/secrets/findings.json`.
+
+The same secret committed at the same path and line in several commits becomes one finding (the fingerprint ignores the commit).
 
 ## Workflow inputs
 
