@@ -226,3 +226,9 @@ def test_run_manifest_requires_every_field():
     data = manifest()
     del data["tool_versions"]
     assert list(findings.validator("run-manifest.schema.json").iter_errors(data))
+
+
+@pytest.mark.parametrize("location", [{}, {"line": 3}, "app.py"])
+def test_make_finding_rejects_shapeless_location(location):
+    with pytest.raises(FindingsError, match="needs a 'path' or a 'url'"):
+        sample(location=location)

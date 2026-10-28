@@ -34,7 +34,7 @@ def validator(schema_name: str) -> Draft202012Validator:
 
 
 def _schema_errors(schema_name: str, instance) -> list[str]:
-    errors = sorted(validator(schema_name).iter_errors(instance), key=lambda e: list(e.absolute_path))
+    errors = sorted(validator(schema_name).iter_errors(instance), key=lambda e: [str(p) for p in e.absolute_path])
     return [f"{'/'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}" for e in errors]
 
 
@@ -48,6 +48,8 @@ def normalise_path(path: str) -> str:
 
 
 def normalise_location(location: dict) -> dict:
+    if not isinstance(location, dict) or not ({"path", "url"} & set(location)):
+        raise FindingsError("location needs a 'path' or a 'url'")
     if "url" in location:
         return {"url": location["url"], "method": location["method"].upper()}
     start = location.get("start_line")
