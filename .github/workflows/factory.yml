@@ -1,0 +1,152 @@
+name: factory
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        default: check
+      factory-ref:
+        type: string
+        default: main
+      config-path:
+        type: string
+        default: .factory.yml
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: false
+
+permissions: {}
+
+jobs:
+  setup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      platform: ${{ steps.config.outputs.platform }}
+      asvs_level: ${{ steps.config.outputs.asvs_level }}
+      openapi: ${{ steps.config.outputs.openapi }}
+      has-claude: ${{ steps.claude.outputs.present }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - uses: ./.factory/.github/actions/setup-factory
+      - name: validate config
+        id: config
+        env:
+          CONFIG_PATH: ${{ inputs.config-path }}
+        run: python -m factory.config --path "$CONFIG_PATH"
+      - name: write run manifest
+        env:
+          CONFIG_PATH: ${{ inputs.config-path }}
+          MODE: ${{ inputs.mode }}
+          FACTORY_REF: ${{ inputs.factory-ref }}
+        run: >-
+          python -m factory.manifest create
+          --config "$CONFIG_PATH" --mode "$MODE" --factory-ref "$FACTORY_REF"
+          --stage passthrough --stage hello-ai --stage gate
+          --out out/setup/run-manifest.json
+      - name: check for Claude token
+        id: claude
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then present=true; else present=false; fi
+          echo "present=$present" >> "$GITHUB_OUTPUT"
+          echo "Claude token present: $present"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: setup
+          path: out/setup/
+          if-no-files-found: error
+
+  passthrough:
+    needs: setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - uses: ./.factory/.github/actions/setup-factory
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: setup
+          path: in/setup
+      - run: python -m factory.passthrough --manifest in/setup/run-manifest.json --out out/passthrough/findings.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: passthrough
+          path: out/passthrough/
+          if-no-files-found: error
+
+  hello-ai:
+    needs: setup
+    if: needs.setup.outputs.has-claude == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - uses: ./.factory/.github/actions/setup-factory
+      - run: python -m factory.tools install claude-code
+      - name: hello stage
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          FACTORY_MODEL_ADAPTER: claude_code
+          FACTORY_CLAUDE_TIMEOUT: "300"
+          FACTORY_CLAUDE_MAX_TURNS: "3"
+        run: >-
+          python -m factory.adapter run --stage hello-ai
+          --prompt .factory/prompts/hello.md
+          --schema .factory/schemas/hello.schema.json
+          --out out/hello-ai/hello.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: hello-ai
+          path: out/hello-ai/
+          if-no-files-found: error
+
+  gate:
+    needs: [setup, passthrough, hello-ai]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - uses: ./.factory/.github/actions/setup-factory
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: in
+      - name: gate
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python -m factory.gate --artifacts in --needs "$NEEDS"
