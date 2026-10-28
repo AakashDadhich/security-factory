@@ -1,0 +1,41 @@
+{
+  "version": "2.1.0",
+  "$schema": "http://json.schemastore.org/sarif-2.1.0-rtm.5",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "ESLint",
+          "informationUri": "https://eslint.org",
+          "rules": [
+            {"id": "security/detect-eval-with-expression", "helpUri": "https://github.com/eslint-community/eslint-plugin-security", "shortDescription": {"text": "Detects eval(variable)"}},
+            {"id": "security/detect-object-injection", "shortDescription": {"text": "Detects variable[key] as a left- or right-hand assignment operand"}}
+          ]
+        }
+      },
+      "results": [
+        {
+          "level": "error",
+          "message": {"text": "eval with argument of type MemberExpression"},
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "file:///work/app/src/run.js", "index": 0}, "region": {"startLine": 2, "startColumn": 10, "endLine": 2, "endColumn": 30}}}],
+          "ruleId": "security/detect-eval-with-expression",
+          "ruleIndex": 0
+        },
+        {
+          "level": "error",
+          "message": {"text": "Generic Object Injection Sink"},
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "file:///work/app/src/util.js", "index": 1}, "region": {"startLine": 7, "startColumn": 3, "endLine": 7, "endColumn": 12}}}],
+          "ruleId": "security/detect-object-injection",
+          "ruleIndex": 1
+        },
+        {
+          "level": "warning",
+          "message": {"text": "Generic Object Injection Sink"},
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "file:///work/app/src/util.js", "index": 1}, "region": {"startLine": 9, "startColumn": 3, "endLine": 9, "endColumn": 12}}}],
+          "ruleId": "security/detect-object-injection",
+          "ruleIndex": 1
+        }
+      ]
+    }
+  ]
+}

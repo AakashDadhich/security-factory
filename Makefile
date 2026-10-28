@@ -1,4 +1,4 @@
-.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test
+.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint
 
 help:
 	@echo "make test         Run the factory test suite"
@@ -7,6 +7,7 @@ help:
 	@echo "make secrets      Scan git history for secrets and committed .env files"
 	@echo "make sast-semgrep Run Semgrep on PLATFORM (default web) over SRC (default .)"
 	@echo "make semgrep-test Run the custom Semgrep rule tests"
+	@echo "make sast-eslint  Run the factory ESLint security config over SRC (default .)"
 
 test:
 	python -m pytest -v
@@ -28,3 +29,6 @@ sast-semgrep:
 
 semgrep-test:
 	semgrep --test --metrics=off --disable-version-check semgrep-rules/custom
+
+sast-eslint:
+	python -m factory.stages.sast_eslint --src $(SRC) --out out/sast-eslint
