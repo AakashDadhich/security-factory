@@ -10,7 +10,7 @@ help:
 	@echo "make sast-eslint  Run the factory ESLint security config over SRC (default .)"
 	@echo "make deps-sbom    Scan dependencies and write a CycloneDX SBOM for SRC (default .)"
 	@echo "make dast-up      Build and start the throwaway app on the isolated DAST network"
-	@echo "make dast-web     Run the ZAP baseline scan against the running app"
+	@echo "make dast-web     Run the ZAP full scan (OpenAPI import and active scan) against the running app"
 	@echo "make dast-down    Remove the DAST containers and network"
 
 test:
@@ -44,7 +44,7 @@ dast-up:
 	python -m factory.dast.harness up
 
 dast-web:
-	python -m factory.stages.dast_web --plan baseline --out out/dast-web
+	python -m factory.stages.dast_web --out out/dast-web
 
 dast-down:
 	python -m factory.dast.harness down

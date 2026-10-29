@@ -315,10 +315,10 @@ jobs:
           CONFIG_PATH: ${{ inputs.config-path }}
           RUN_ID: ${{ github.run_id }}
         run: python -m factory.dast.harness up --config "$CONFIG_PATH" --run-id "$RUN_ID"
-      - name: zap baseline
+      - name: zap full scan
         env:
           CONFIG_PATH: ${{ inputs.config-path }}
-        run: python -m factory.stages.dast_web --plan baseline --config "$CONFIG_PATH" --out out/dast-web
+        run: python -m factory.stages.dast_web --config "$CONFIG_PATH" --out out/dast-web
       - name: stop app
         if: always()
         env:
