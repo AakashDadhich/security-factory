@@ -303,7 +303,10 @@ def test_reply_schema_pins_elements_and_asvs_ids():
     validator = Draft202012Validator(schema)
     assert not list(validator.iter_errors(stride_reply()))
     for change in ({"element": "Ghost"}, {"category": "phishing"}, {"severity": "high"}, {"id": "TM-1"},
-                   {"mitigations": [{"text": "t", "asvs_refs": ["V99.9.9"]}]}, {"mitigations": [{"text": "t", "asvs_refs": []}]}):
+                   {"mitigations": [{"text": "t", "asvs_refs": ["V99.9.9"]}]}, {"mitigations": [{"text": "t", "asvs_refs": []}]},
+                   {"title": "# Heading"}, {"title": "x" * 401}, {"mitigations": [{"text": "- bullet", "asvs_refs": ["V8.2.2"]}]},
+                   {"mitigations": [{"text": "1. step", "asvs_refs": ["V8.2.2"]}]},
+                   {"mitigations": [{"text": "Use <!-- hidden -->", "asvs_refs": ["V8.2.2"]}]}):
         bad = stride_reply()
         bad["threats"][0] |= change
         assert list(validator.iter_errors(bad)), change

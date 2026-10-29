@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from factory import adapter, findings, tools
+from factory import adapter, findings, rules, tools
 from factory.adapter import READ_TOOLS, AdapterError
 from factory.threatmodel import pytm_runner
 from factory.threatmodel.pytm_runner import RunnerError
@@ -20,6 +20,13 @@ ID_PREFIX = "TM"
 STRIDE = ("spoofing", "tampering", "repudiation", "information-disclosure", "denial-of-service", "elevation-of-privilege")
 LEVELS = {"low": 1, "medium": 2, "high": 3}
 FINDING_PATH = "security/threats.json"
+# Titles and mitigation texts are rendered into CLAUDE.md by factory.rules, which refuses
+# Markdown structure at the start, comment or fence markers, and more than 500 characters.
+RULES_TEXT = {
+    "type": "string",
+    "maxLength": 400,
+    "pattern": r"^(?![\s\S]*(<!--|```))\s*(?![#>`|*+-]|\d+[.)]\s)\S",
+}
 
 
 class ThreatModelError(Exception):
@@ -47,7 +54,7 @@ def stride_reply_schema(names: list[str], asvs: list[str]) -> dict:
                 "previous_id": {"type": ["string", "null"]},
                 "category": {"enum": list(STRIDE)},
                 "element": {"enum": names},
-                "title": text,
+                "title": RULES_TEXT,
                 "description": text,
                 "likelihood": level,
                 "impact": level,
@@ -55,7 +62,7 @@ def stride_reply_schema(names: list[str], asvs: list[str]) -> dict:
                     "type": "object",
                     "additionalProperties": False,
                     "required": ["text", "asvs_refs"],
-                    "properties": {"text": text, "asvs_refs": {"type": "array", "minItems": 1, "items": {"enum": asvs}}},
+                    "properties": {"text": RULES_TEXT, "asvs_refs": {"type": "array", "minItems": 1, "items": {"enum": asvs}}},
                 }},
                 "status": {"enum": ["open", "mitigated"]},
                 "evidence": text,
@@ -214,6 +221,10 @@ def run(plan_path: Path, out: Path, previous_dir: Path | None, python: Path, wor
     doc = merge(json.loads(reply_path.read_text())["threats"], previous, model_version)
     validate_threats(doc, "threats.json")
     (out / "threats.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
+    try:
+        rules.load_threats(out / "threats.json")
+    except rules.RulesError as e:
+        raise ThreatModelError(f"threats.json cannot feed the rules renderer: {e}") from None
     stage_findings = threat_findings(doc)
     findings.write(out / "findings.json", stage_findings)
     counts = {c: sum(1 for t in doc["threats"] if t["category"] == c) for c in STRIDE}
