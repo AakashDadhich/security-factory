@@ -1,0 +1,59 @@
+{
+  "@programName": "ZAP",
+  "@version": "2.17.0",
+  "site": [
+    {
+      "@name": "http://app:3000",
+      "alerts": [
+        {
+          "pluginid": "10049",
+          "alertRef": "10049",
+          "alert": "Storable and Cacheable Content",
+          "name": "Storable and Cacheable Content",
+          "riskcode": "0",
+          "confidence": "2",
+          "desc": "<p>The response contents are storable by caching components.</p>",
+          "instances": [
+            {"uri": "http://app:3000/", "method": "GET"},
+            {"uri": "http://app:3000/health?x=1", "method": "GET"},
+            {"uri": "http://app:3000/health?x=2", "method": "GET"}
+          ],
+          "solution": "<p>Validate that the response does not contain sensitive data.</p>",
+          "cweid": "524"
+        },
+        {
+          "pluginid": "10020",
+          "alertRef": "10020-1",
+          "alert": "Missing Anti-clickjacking Header",
+          "name": "Missing Anti-clickjacking Header",
+          "riskcode": "2",
+          "confidence": "2",
+          "desc": "<p>The response does not protect against clickjacking.</p>",
+          "instances": [{"uri": "http://app:3000/page", "method": "GET"}],
+          "solution": "<p>Set X-Frame-Options or frame-ancestors.</p>",
+          "cweid": "1021"
+        },
+        {
+          "pluginid": "10105",
+          "alertRef": "10105",
+          "name": "Weak Authentication Method",
+          "riskcode": "3",
+          "desc": "<p>Basic auth in use.</p>",
+          "instances": [{"uri": "http://app:3000/admin", "method": "post"}],
+          "solution": "",
+          "cweid": "-1"
+        },
+        {
+          "pluginid": "10096",
+          "alertRef": "10096",
+          "name": "Timestamp Disclosure",
+          "riskcode": "1",
+          "desc": "<p>A timestamp was disclosed.</p>",
+          "instances": [],
+          "solution": "<p>Manually confirm.</p>",
+          "cweid": "200"
+        }
+      ]
+    }
+  ]
+}

@@ -7,7 +7,7 @@ from factory import config, findings, gate, stage_matrix
 from factory.config import ConfigError
 
 TODAY = datetime.date(2026, 10, 29)
-WEB_STAGES = ["secrets", "sast-semgrep", "sast-codeql", "sast-eslint", "deps-sbom"]
+WEB_STAGES = ["secrets", "sast-semgrep", "sast-codeql", "sast-eslint", "deps-sbom", "dast-web"]
 CONFIG = """\
 platform: web
 web:
