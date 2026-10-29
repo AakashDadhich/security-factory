@@ -20,23 +20,52 @@ OUTPUT_CAP = 4000
 
 # sys is left out: a model that edits sys.argv could make pytm read or write any file.
 ALLOWED_IMPORTS = frozenset({"pytm"})
-FORBIDDEN_NAMES = frozenset({
-    "open", "exec", "eval", "compile", "__import__", "subprocess", "os",
-    "getattr", "setattr", "delattr", "globals", "locals", "vars", "input",
-    "breakpoint", "help", "memoryview", "builtins", "importlib", "__builtins__",
-})
 # Threat and Finding are left out on purpose: pytm eval()s a Threat's condition string.
 PYTM_EXPORTS = frozenset({
     "TM", "Boundary", "Actor", "Server", "Process", "SetOfProcesses", "Lambda", "Datastore", "DatastoreType",
     "Dataflow", "Data", "Classification", "Lifetime", "TLSVersion", "ExternalEntity", "Element", "Assumption",
     "Controls", "Action", "Agent", "LLM",
 })
-PYTM_MODULES = frozenset({
-    "actor", "asset", "base", "boundary", "dataflow", "datastore", "element", "enums", "finding", "flows",
-    "json", "pytm", "report_util", "template_engine", "threat", "threatlib", "tm",
+FORBIDDEN_NAMES = frozenset({
+    "open", "exec", "eval", "compile", "__import__", "subprocess", "os",
+    "getattr", "setattr", "delattr", "globals", "locals", "vars", "input",
+    "breakpoint", "help", "memoryview", "builtins", "importlib", "__builtins__",
+    "type", "object", "super", "classmethod", "staticmethod", "property", "dir", "id",
 })
-FORBIDDEN_KEYWORDS = frozenset({"threatsFile"})
-FORBIDDEN_ATTRS = FORBIDDEN_KEYWORDS | {"report", "load", "loads", "modules", "sys", "argv"} | FORBIDDEN_NAMES | PYTM_MODULES
+FORBIDDEN_KEYWORDS = frozenset({"threatsFile", "condition", "overrides", "findings", "sourceFiles"})
+# An allowlist, not a denylist: plain names such as gi_frame and f_globals reach the interpreter's internals.
+# These are pytm 1.4.0's element, data and control properties (minus Data.format, which str.format would
+# reach), its enum members and tm.process.
+ALLOWED_ATTRS = frozenset({
+    "AUTO", "AWS_S3", "FILE_SYSTEM", "HARDCODED", "IGNORE", "LDAP", "LONG", "MANUAL", "NONE", "NO_ACTION", "OS",
+    "PUBLIC", "RESTRICT", "RESTRICTED", "SECRET", "SENSITIVE", "SHORT", "SQL", "SSLv1", "SSLv2", "SSLv3", "TLSv10",
+    "TLSv11", "TLSv12", "TLSv13", "TOP_SECRET", "UNKNOWN", "allowsClientSideScripting", "assumptions",
+    "authenticatesDestination", "authenticatesSource", "authenticationScheme", "authorizesSource", "carriedBy",
+    "checksDestinationRevocation", "checksInputBounds", "classification", "codeType", "controls",
+    "credentialsLife", "data", "definesConnectionTimeout", "description", "disablesDTD", "disablesiFrames",
+    "dstPort", "encodesHeaders", "encodesOutput", "encryptsCookies", "encryptsSessionData", "environment",
+    "executesCode", "handlesCrashes", "handlesInterruptions", "handlesResourceConsumption",
+    "handlesResources", "hasAccessControl", "hasAccessToSensitiveSystems", "hasAgentCapabilities",
+    "hasContentFiltering", "hasFineTuning", "hasPhysicalAccess", "hasRAG", "hasSystemPrompt", "hasWriteAccess",
+    "ignoreUnused", "implementsAPI", "implementsAuthenticationScheme", "implementsCSRFToken",
+    "implementsCommunicationProtocol", "implementsNonce", "implementsPOLP", "implementsServerSideValidation",
+    "implementsStrictHTTPValidation", "inBoundary", "inScope", "invokesScriptFilters", "isAdmin", "isCredentials",
+    "isDestEncryptedAtRest", "isEncrypted", "isEncryptedAtRest", "isHardened", "isOrdered", "isPII", "isResilient",
+    "isResponse", "isSQL", "isSelfHosted", "isShared", "isSourceEncryptedAtRest", "isStored", "isThirdParty",
+    "levels", "maxClassification", "mergeResponses", "minTLSVersion", "name", "note", "onAWS", "onDuplicates",
+    "onRDS", "order", "port", "process", "processedBy", "processesPersonalData", "processesUntrustedInput",
+    "protocol", "providesConfidentiality", "providesIntegrity", "response", "responseTo", "retainsUserData",
+    "sanitizesInput", "sink", "source", "srcPort", "storesLogData", "storesPII", "storesSensitiveData",
+    "tlsVersion", "tracksExecutionFlow", "type", "usesCache", "usesCodeSigning", "usesEncryptionAlgorithm",
+    "usesEnvironmentVariables", "usesExternalTools", "usesMFA", "usesParameterizedInput", "usesSecureFunctions",
+    "usesSessionTokens", "usesStrongSessionIdentifiers", "usesVPN", "usesXMLParser", "validatesContentType",
+    "validatesHeaders", "validatesInput", "validatesToolLaunchConfig", "verifySessionIdentifiers",
+}) | PYTM_EXPORTS
+FORBIDDEN_NODES = (
+    ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda, ast.GeneratorExp, ast.ListComp, ast.SetComp,
+    ast.DictComp, ast.Await, ast.Yield, ast.YieldFrom, ast.Global, ast.Nonlocal, ast.With, ast.AsyncWith, ast.Try,
+    ast.While, ast.Starred, ast.JoinedStr, ast.NamedExpr, ast.Delete,
+)
 REQUIRED_CALLS = ("TM", "Boundary", "Actor", "Datastore", "Dataflow")
 PROCESS_CALLS = ("Server", "Process", "SetOfProcesses", "Lambda")
 ENV_KEEP = ("PATH", "LANG", "LC_ALL")
@@ -94,12 +123,12 @@ def validate_source(source: str) -> list[str]:
             elif node.id == "pytm" and id(node) not in module_ok:
                 errors.append(f"{where}: pytm may only be used as pytm.<class>, for example pytm.Server")
         elif isinstance(node, ast.Attribute):
-            if node.attr.startswith("__"):
-                errors.append(f"{where}: dunder attribute '{node.attr}' is not allowed")
-            elif node.attr.startswith("_"):
-                errors.append(f"{where}: private attribute '{node.attr}' is not allowed")
-            elif node.attr in FORBIDDEN_ATTRS:
-                errors.append(f"{where}: attribute '{node.attr}' is not allowed")
+            if node.attr not in ALLOWED_ATTRS:
+                errors.append(f"{where}: attribute '{node.attr}' is not allowed, use only pytm element properties")
+        elif isinstance(node, ast.Subscript) and not (isinstance(node.slice, ast.Constant) and type(node.slice.value) is int):
+            errors.append(f"{where}: only integer subscripts are allowed")
+        elif isinstance(node, FORBIDDEN_NODES):
+            errors.append(f"{where}: {type(node).__name__} is not allowed in a threat model")
         elif isinstance(node, ast.keyword) and node.arg in FORBIDDEN_KEYWORDS:
             errors.append(f"{where}: keyword '{node.arg}' is not allowed")
         elif isinstance(node, ast.Call):

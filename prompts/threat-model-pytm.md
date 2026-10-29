@@ -11,6 +11,7 @@ You may read the project in the current directory to see how the app is built. D
 
 Rules for `tm.py`:
 - Import only from `pytm`, for example `from pytm import TM, Actor, Boundary, Dataflow, Datastore, Server, Process, ExternalEntity, Data, Classification`. No other imports (not even `sys`), no `from __future__`.
+- Write plain declarations only: assignments, calls to pytm classes and pytm element properties (such as `protocol`, `inBoundary`, `controls.isHardened`). No functions, classes, lambdas, loops, comprehensions, f-strings, `try` or `with`, and only integer subscripts.
 - No file, process or network access: no `open`, `exec`, `eval`, `compile`, `__import__`, `getattr`, `setattr`, `globals`, `vars`, `os`, `subprocess`. No names or attributes that start with `_` (other than `__name__`). Do not import or create `Threat` or `Finding`, do not set `threatsFile`, and do not call `report`, `load` or `loads`; the factory applies threats itself.
 - Create one `TM("<app name>")` with a one-sentence `description`, and set `isOrdered = True`.
 - Declare every trust boundary (`Boundary`, for example "Internet" and "Server"), every actor (`Actor`), every server or process (`Server`, `Process`), every datastore (`Datastore`), and every dataflow (`Dataflow(source, sink, "<name>")`) including responses. Put each element in its boundary with `inBoundary`.

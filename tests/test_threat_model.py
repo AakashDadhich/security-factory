@@ -85,14 +85,24 @@ def test_import_os_is_rejected():
     ("import pytm\npytm.tm.os.system('id')", "pytm may only be used as pytm.<class>"),
     ("import pytm\nmod = pytm", "pytm may only be used as pytm.<class>"),
     ("tm.process.os", "attribute 'os'"),
-    ("x = tm._threats", "private attribute '_threats'"),
-    ("x = TM.process.__globals__", "dunder attribute '__globals__'"),
+    ("x = tm._threats", "attribute '_threats'"),
+    ("x = TM.process.__globals__", "attribute '__globals__'"),
+    ("x = (y for y in ()).gi_frame.f_globals['__builtins__']", "attribute 'gi_frame'"),
+    ("x = (y for y in ()).gi_frame.f_globals['__builtins__']", "only integer subscripts"),
+    ("x = (y for y in ())", "GeneratorExp is not allowed"),
+    ("x = [y for y in ()]", "ListComp is not allowed"),
+    ("f = lambda: 1", "Lambda is not allowed"),
+    ("def f():\n    pass", "FunctionDef is not allowed"),
+    ("class C:\n    pass", "ClassDef is not allowed"),
+    ("x = f'{tm}'", "JoinedStr is not allowed"),
+    ("x = '{0}'.format(tm)", "attribute 'format'"),
+    ("x = type(tm)", "'type' is not allowed"),
     ("data = open('/etc/passwd').read()", "'open' is not allowed"),
     ("exec('1')", "'exec' is not allowed"),
     ("eval('1')", "'eval' is not allowed"),
     ("__import__('os')", "'__import__' is not allowed"),
     ("getattr(tm, 'x')", "'getattr' is not allowed"),
-    ("x = ().__class__.__base__", "dunder attribute '__class__'"),
+    ("x = ().__class__.__base__", "attribute '__class__'"),
     ("__builtins__", "'__builtins__' is not allowed"),
     ("import sys\nsys.argv += ['--report', '/etc/passwd']", "import of 'sys' is not allowed"),
     ("tm.process.argv", "attribute 'argv'"),
@@ -107,7 +117,8 @@ def test_ast_rejects_unsafe_code(snippet, message):
 
 
 def test_pytm_classes_can_be_used_through_the_module():
-    source = GOOD_TM + "\nimport pytm\nextra = pytm.Server('Worker', inBoundary=server_zone)\n"
+    source = (GOOD_TM + "\nimport pytm\nextra = pytm.Server('Worker', inBoundary=server_zone)\n"
+              "extra.controls.isHardened = True\ndb.type = pytm.DatastoreType.SQL\nfirst = [web, db][0]\n")
     assert pytm_runner.validate_source(source) == []
 
 
