@@ -2,7 +2,8 @@ import shutil
 import sys
 from pathlib import Path
 
-args = [a for a in sys.argv[1:] if a != "-I"]
+harness, *args = [a for a in sys.argv[1:] if a != "-I"]
+assert harness.endswith("pytm_harness.py"), harness
 source = Path(args[0]).read_text()
 if "FAKE_PYTM_FAIL" in source:
     print("Traceback: NameError: name 'Sevrer' is not defined", file=sys.stderr)

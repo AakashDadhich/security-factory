@@ -12,6 +12,7 @@ from factory.adapter import READ_TOOLS
 FACTORY_ROOT = Path(__file__).resolve().parents[2]
 PROMPT = FACTORY_ROOT / "prompts" / "threat-model-pytm.md"
 SCHEMA = FACTORY_ROOT / "schemas" / "tm-source.schema.json"
+HARNESS = Path(__file__).resolve().parent / "pytm_harness.py"
 STAGE = "threat-model-pytm"
 RETRY_STAGE = "threat-model-pytm-retry"
 EXIT_REJECTED = 2
@@ -61,6 +62,7 @@ ALLOWED_ATTRS = frozenset({
     "usesSessionTokens", "usesStrongSessionIdentifiers", "usesVPN", "usesXMLParser", "validatesContentType",
     "validatesHeaders", "validatesInput", "validatesToolLaunchConfig", "verifySessionIdentifiers",
 }) | PYTM_EXPORTS
+ALLOWED_KEYWORDS = ALLOWED_ATTRS - FORBIDDEN_KEYWORDS - PYTM_EXPORTS
 FORBIDDEN_NODES = (
     ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda, ast.GeneratorExp, ast.ListComp, ast.SetComp,
     ast.DictComp, ast.Await, ast.Yield, ast.YieldFrom, ast.Global, ast.Nonlocal, ast.With, ast.AsyncWith, ast.Try,
@@ -129,8 +131,10 @@ def validate_source(source: str) -> list[str]:
             errors.append(f"{where}: only integer subscripts are allowed")
         elif isinstance(node, FORBIDDEN_NODES):
             errors.append(f"{where}: {type(node).__name__} is not allowed in a threat model")
-        elif isinstance(node, ast.keyword) and node.arg in FORBIDDEN_KEYWORDS:
-            errors.append(f"{where}: keyword '{node.arg}' is not allowed")
+        elif isinstance(node, ast.keyword) and node.arg is None:
+            errors.append(f"{where}: ** unpacking of keyword arguments is not allowed")
+        elif isinstance(node, ast.keyword) and node.arg not in ALLOWED_KEYWORDS:
+            errors.append(f"{where}: keyword '{node.arg}' is not allowed, use only pytm element properties")
         elif isinstance(node, ast.Call):
             name = _called_name(node.func)
             if name:
@@ -149,12 +153,13 @@ def _tail(text: str) -> str:
     return text if len(text) <= OUTPUT_CAP else "..." + text[-OUTPUT_CAP:]
 
 
-def execute(python: Path, tm_path: Path, args: list[str], timeout: int) -> str:
+def execute(python: Path, script: Path, args: list[str], timeout: int, cwd: Path | None = None) -> str:
+    cwd = cwd or script.parent
     env = {k: os.environ[k] for k in ENV_KEEP if k in os.environ}
-    env["HOME"] = str(tm_path.parent)
+    env["HOME"] = str(cwd)
     try:
         result = subprocess.run(
-            [str(python), "-I", str(tm_path), *args], cwd=tm_path.parent, env=env,
+            [str(python), "-I", str(script), *args], cwd=cwd, env=env,
             capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired:
@@ -226,13 +231,13 @@ def check_and_run(source: str, out: Path, python: Path, timeout: int = TIMEOUT_S
     tm_path.write_text(source)
     print(f"AST validation passed for {tm_path}", flush=True)
     print(f"running pytm --dfd and --json with {python} (timeout {timeout} s, no secrets in env)", flush=True)
-    dot = execute(python, tm_path, ["--dfd"], timeout)
+    dot = execute(python, HARNESS, [str(tm_path.resolve()), "--dfd"], timeout, out)
     if "digraph" not in dot:
         raise ModelRejected("pytm --dfd did not print a digraph")
     (out / "dfd.dot").write_text(dot)
     raw_path = out / "pytm.json"
     raw_path.unlink(missing_ok=True)
-    execute(python, tm_path, ["--json", str(raw_path.resolve())], timeout)
+    execute(python, HARNESS, [str(tm_path.resolve()), "--json", str(raw_path.resolve())], timeout, out)
     try:
         raw = json.loads(raw_path.read_text())
     except (OSError, json.JSONDecodeError) as e:

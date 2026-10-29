@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -108,6 +109,10 @@ def test_import_os_is_rejected():
     ("tm.process.argv", "attribute 'argv'"),
     ("tm.threatsFile = '/etc/passwd'", "attribute 'threatsFile'"),
     ("TM('x', threatsFile='/etc/passwd')", "keyword 'threatsFile'"),
+    ("TM('x', **{'threatsFile': '/etc/passwd'})", "** unpacking"),
+    ("Server('Worker', **extra)", "** unpacking"),
+    ("Server('Worker', condition='True')", "keyword 'condition'"),
+    ("Server('Worker', anything=1)", "keyword 'anything'"),
     ("print(tm.report('/etc/passwd'))", "attribute 'report'"),
     ("def broken(:\n    pass", "syntax error"),
 ])
@@ -386,3 +391,25 @@ def test_integration_real_pytm_runs_the_fixture_model(tmp_path):
     assert "Note text" in next(f for f in model["flows"] if f["name"] == "Create note request")["data"]
     assert "digraph" in (tmp_path / "dfd.dot").read_text()
     print(json.dumps(model, indent=2))
+
+
+def test_integration_harness_resets_a_custom_threats_file(tmp_path):
+    python = tools.venv_python("pytm")
+    if not python.is_file():
+        if os.environ.get("FACTORY_REQUIRE_PYTM"):
+            pytest.fail(f"pytm is required but {python} is missing")
+        pytest.skip("pytm venv not installed")
+    bundled = subprocess.run(
+        [str(python), "-I", "-c", "import os, pytm; print(os.path.join(os.path.dirname(pytm.__file__), 'threatlib', 'threats.json'))"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    threats = json.loads(Path(bundled).read_text())
+    threats.append(threats[0] | {"SID": "FACTORYTEST", "target": ["Server"], "condition": "True"})
+    custom = tmp_path / "custom-threats.json"
+    custom.write_text(json.dumps(threats))
+    model = tmp_path / "tm.py"
+    model.write_text(GOOD_TM.replace('tm.isOrdered = True', f'tm.isOrdered = True\ntm.threatsFile = "{custom}"'))
+    raw = tmp_path / "pytm.json"
+    pytm_runner.execute(python, pytm_runner.HARNESS, [str(model), "--json", str(raw)], 60, tmp_path)
+    found = {f.get("threat_id") for f in json.loads(raw.read_text())["findings"]}
+    assert found and "FACTORYTEST" not in found
