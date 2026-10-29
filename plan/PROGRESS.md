@@ -42,7 +42,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 11 | gate-and-report | done |
 | 12 | dast-zap-baseline | done |
 | 13 | dast-zap-active-openapi | done |
-| 14 | project-record | in progress |
+| 14 | project-record | done |
 | 15 | security-rules-and-renderer | todo |
 | 16 | clarify-plan-stage | todo |
 | 17 | threat-model-pytm-stride | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 13 are done. Next in order is chunk 14 (project-record); 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 14 are done. Next in order is chunk 15 (security-rules-and-renderer). Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -140,7 +140,17 @@ Chunks 00 to 13 are done. Next in order is chunk 14 (project-record); 15 can als
 
 - DAST full plan (chunk 13): `python -m factory.stages.dast_web --out out/dast-web` now defaults to `--plan full`; `baseline` is kept. `factory/dast/plan.py` renders `zap/full.yaml` (placeholder line `{{OPENAPI_JOB}}` is replaced by the `openapi` job or removed) and holds the guards (`assert_safe_target`: only `http://app:<port>`; `assert_safe_command`: needs `--network factory-dast`). The spec path from `web.openapi` is resolved inside the project dir and mounted read-only at `/zap/spec/openapi.yaml`. `PLANS` now lives in `factory/dast/plan.py`. On the clean test app the full scan takes about 2 minutes (activeScan 1m10s) and gives 0 alerts. ZAP's traditional-json report only lists URLs that have alerts, so a clean app's report has no per-URL entries. The plan therefore ends with an `export` job (Import/Export add-on, `type: yaml`, `source: sitestree`) writing `sites-tree.yaml`; the stage turns it into `out/dast-web/sites.json` (`{"paths": [...]}`). Fixture: `tests/fixtures/zap/sites-tree.yaml` (real ZAP output).
 
+- Project record (chunk 14): `python -m factory.record read --repo <o/n> --out <dir>` and `write --repo <o/n> --artifacts in --event <e> --ref <r> --default-branch <b> [--run-id] [--commit]` (`--remote` overrides the URL, used by tests). Layout and readers in `docs/record.md`. Branch `factory-record` has `runs/<UTC>-<run_id>.json` and, after a default-branch push that passes, `latest/{sbom.cdx.json,findings.json,run-manifest.json,sbom-diff.json}`. Job `record` needs `gate`, skips fork PRs, mints an App token (`actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510`, v3.3.0, `permission-contents: write`), downloads `gate`, `deps-sbom` and `setup` artifacts. `FACTORY_APP_PRIVATE_KEY` is declared as an optional `workflow_call` secret (actionlint needs it). Push retry re-fetches, resets and re-applies rather than rebasing (same result for add or replace-only files). Bot commit email `349043243+aakashdadhich-factory-bot[bot]@users.noreply.github.com`.
+- Syft omits dev dependencies from the SBOM, so `sbom-diff.json` only reflects runtime dependencies (a `supertest` bump showed no diff; a `helmet` bump did).
+
 ## Session log
+
+### 2026-10-29, chunk 14 (project-record)
+Added `factory/record.py`, `tests/test_record.py`, `docs/record.md` and the `record` job. Selftest first failed actionlint (undeclared secret), fixed. Master session pushed the commits.
+- selftest run `40831540045`: all 6 jobs `success`; `407 passed, 2 skipped`, including the 15 record tests (naming, latest rule, SBOM diff, push retry on a bare repo). Pass.
+- `factory-test-web` push run `40831658255`: all 11 jobs `success` incl. `record`. `gh api .../branches/factory-record` returns the branch; `contents/latest/sbom.cdx.json?ref=factory-record` returns a 70652-byte file. Pass.
+- `runs/` has one entry per run (3 after three pushes); `gh run list --branch factory-record` shows 0 runs. Pass.
+- Second push (run `40832327...` on `312feb7`, helmet 8.3.0 to 8.2.0): `latest/sbom-diff.json` is `changed: [{helmet, [8.3.0], [8.2.0]}]`. Pass. Test app restored to helmet 8.3.0 and supertest 7.3.1 afterwards (`9db6cb8`).
 
 ### 2026-10-29, chunk 13 (dast-zap-active-openapi)
 Added `zap/full.yaml`, `factory/dast/plan.py`, `tests/test_dast_plan.py`, fixtures, stage default `full`, workflow and Makefile updates, plus (owner chose this for the URL check) an `export` job writing the sites tree. Master session pushed the commits.
