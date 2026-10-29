@@ -50,7 +50,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 19 | secure-codegen-stage | done |
 | 20 | second-agent-review | done |
 | 21 | fix-loop | done |
-| 22 | check-mode-wiring | todo |
+| 22 | check-mode-wiring | in progress |
 | 23 | vulnerable-web-acceptance | todo |
 | 24 | improvement-loop | todo |
 | 25 | zap-authenticated-scan | todo |
@@ -177,6 +177,8 @@ Chunks 00 to 21 are done. Next in order is chunk 22 (check-mode-wiring; chunk 20
 - Concurrency: group `factory-issue-<issue>` for spec, change and fix (`cancel-in-progress: false`), a per-run group otherwise. Cancelling a run does not stop a `next-step` that already dispatched: cancel the dispatched run too.
 - Test project leftovers: issue #7 (first try at the diagnostics issue, labelled `factory:spec`, two cancelled fix runs, branch `factory/7` was never created) and issue #8 (retry, now labelled `factory:needs-human`, branch `factory/8` with two commits). Both open. Ruleset and stub on `factory-test-web` updated (stub also needs `actions: read`).
 - Observed in the issue #8 loop: the generated diagnostics app failed to become healthy in `dast-web` (so the gate failed on missing stages, not on a code finding), and fix attempt 2 changed no files three times. A later chunk may want the fix prompt to see stage failures, or the loop to treat non-code failures differently.
+
+- Check mode (chunk 22, owner-confirmed): a usage-limit hit (adapter exit 75) in `threat-model` or `review` in check mode fails the stage, so the gate fails closed; the owner re-runs after the reset. `record` is skipped for Dependabot PRs (no App key).
 
 ## Session log
 
