@@ -180,28 +180,38 @@ def test_missing_canned_reply_is_an_adapter_error(project, monkeypatch):
     assert code == 1
 
 
-@pytest.mark.parametrize(("mode", "actor", "allowed", "ok"), [
-    ("spec", "AakashDadhich", "AakashDadhich", True),
-    ("change", "aakashdadhich", " someone , AakashDadhich ", True),
-    ("spec", "mallory", "AakashDadhich", False),
-    ("spec", "", "AakashDadhich", False),
-    ("spec", "AakashDadhich", "", False),
-    ("spec", "Aakash", "AakashDadhich", False),
-    ("check", "mallory", "", True),
-    ("fix", "mallory", "", True),
+@pytest.mark.parametrize(("mode", "actor", "author", "allowed", "ok"), [
+    ("spec", "AakashDadhich", "AakashDadhich", "AakashDadhich", True),
+    ("change", "aakashdadhich", "Someone", " someone , AakashDadhich ", True),
+    ("spec", "mallory", "AakashDadhich", "AakashDadhich", False),
+    ("spec", "AakashDadhich", "mallory", "AakashDadhich", False),
+    ("spec", "AakashDadhich", "", "AakashDadhich", False),
+    ("spec", "", "AakashDadhich", "AakashDadhich", False),
+    ("spec", "AakashDadhich", "AakashDadhich", "", False),
+    ("spec", "Aakash", "Aakash", "AakashDadhich", False),
+    ("check", "mallory", "", "", True),
+    ("fix", "mallory", "", "", True),
 ])
-def test_authorize(mode, actor, allowed, ok):
-    assert authorize.authorized(mode, actor, allowed) is ok
-    assert authorize.main(["--mode", mode, "--actor", actor, "--allowed", allowed]) == (0 if ok else 1)
+def test_authorize(mode, actor, author, allowed, ok):
+    assert authorize.authorized(mode, actor, allowed, author) is ok
+    assert authorize.main(["--mode", mode, "--actor", actor, "--author", author, "--allowed", allowed]) == (0 if ok else 1)
 
 
 def test_mocked_unauthorized_issues_event_is_refused(tmp_path, capsys):
-    event = {"action": "labeled", "label": {"name": "factory:spec"}, "sender": {"login": "mallory"}, "issue": {"number": 7}}
+    event = {"action": "labeled", "label": {"name": "factory:spec"}, "sender": {"login": "mallory"},
+             "issue": {"number": 7, "user": {"login": "mallory"}}}
     path = tmp_path / "event.json"
     path.write_text(json.dumps(event))
     loaded = json.loads(path.read_text())
-    assert authorize.main(["--mode", "spec", "--actor", loaded["sender"]["login"], "--allowed", "AakashDadhich"]) == 1
+    args = ["--mode", "spec", "--actor", loaded["sender"]["login"], "--author", loaded["issue"]["user"]["login"], "--allowed", "AakashDadhich"]
+    assert authorize.main(args) == 1
     assert "mallory is not in FACTORY_ALLOWED_ACTORS" in capsys.readouterr().err
+
+
+def test_owner_labelling_an_outsiders_issue_is_refused(capsys):
+    args = ["--mode", "spec", "--actor", "AakashDadhich", "--author", "mallory", "--allowed", "AakashDadhich"]
+    assert authorize.main(args) == 1
+    assert "issue author mallory" in capsys.readouterr().err
 
 
 def workflow_jobs() -> dict:
@@ -249,6 +259,7 @@ def test_authorize_is_first_and_reads_event_text_through_env():
     step = auth["steps"][-1]
     assert "${{" not in step["run"]
     assert step["env"]["SENDER"] == "${{ github.event.sender.login }}"
+    assert step["env"]["AUTHOR"] == "${{ github.event.issue.user.login }}"
     assert step["env"]["ALLOWED"] == "${{ vars.FACTORY_ALLOWED_ACTORS }}"
     assert "needs.authorize.result == 'success'" in jobs["gate"]["if"]
     assert "authorize" in jobs["gate"]["needs"] and "plan" in jobs["gate"]["needs"]

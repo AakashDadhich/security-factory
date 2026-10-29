@@ -47,8 +47,9 @@ jobs:
           PYTHONPATH: .factory
           MODE: ${{ inputs.mode }}
           SENDER: ${{ github.event.sender.login }}
+          AUTHOR: ${{ github.event.issue.user.login }}
           ALLOWED: ${{ vars.FACTORY_ALLOWED_ACTORS }}
-        run: python3 -m factory.authorize --mode "$MODE" --actor "$SENDER" --allowed "$ALLOWED"
+        run: python3 -m factory.authorize --mode "$MODE" --actor "$SENDER" --author "$AUTHOR" --allowed "$ALLOWED"
 
   setup:
     needs: authorize
