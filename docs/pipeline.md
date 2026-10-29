@@ -94,6 +94,25 @@ No AI. It checks out `base_sha`, downloads `codegen-ai`, and in step `apply` (no
 
 The two code generation stages are matrix stages for spec, change and fix modes. Fix mode is not wired into the workflow yet (chunk 21).
 
+## Security review stage
+
+Job `review` is the second-agent review: a fresh adversarial Claude pass over the diff, before the scanners. `contents: read`, the Claude token and no other credential (no App key, no write token). `authorize → setup → plan → threat-model → codegen-ai → codegen-commit → review`, and then `secrets`, `sast-*`, `deps-sbom` and `dast-web` all `need` it, so the review finishes before any scanner starts. A failed review does not stop the scanners (the report stays complete), but the gate fails closed on a failed or missing `review` artifact.
+
+When it runs:
+- Spec and change modes, after `codegen-commit` succeeded: head is the pushed commit (`needs.codegen-commit.outputs.sha`), base is `origin/<default branch>`.
+- Check mode on non-fork pull requests (`pull_request.base.sha` to `pull_request.head.sha`) and on pushes (`before` to the pushed commit; skipped when `before` is all zeros). These are not in the stage matrix yet, so they are not required; chunk 22 wires check mode fully.
+- Fix mode is in the matrix for chunk 21 and is not wired into the workflow yet.
+
+`python -m factory.stages.review --base <rev> --head <rev> --out out/review [--repo .] [--asvs-level 2] [--max-diff-bytes 200000]`:
+1. Lists changed files with `git diff --name-only base...head` (never `security/`, which the factory generates) and takes each file's diff with `--unified=20`, parsing the hunks' new-side line ranges. Binary files have no hunks and are skipped.
+2. Reads `security/threats.json` and `security/plan.json` at the head commit. Only `open` threats are passed on. The ASVS level is the plan's, else `--asvs-level` (the job passes the setup output), and `python -m factory.rules checklist` supplies the checklist.
+3. Caps the diff at `--max-diff-bytes`. Files whose path or file name appears in an open threat come first, then files with more changed lines. A file that does not fit keeps the whole hunks that fit; what is left out is listed in `summary.json` and becomes one `info` check finding (`review-truncated`, source `check`, tool `factory`).
+4. Runs the adapter (stage `review`, `prompts/security-review.md`, reply `schemas/review.schema.json`) with `Read,Grep,Glob` only. With no reviewable files the model is not called and the findings are empty.
+5. Guards the reply deterministically. A finding whose `path` is not in the reviewed diff, or whose lines do not fit inside one reviewed hunk (changes plus their 20 lines of context), becomes `info` with a note. `confidence: low` caps the severity at `medium`. ASVS ids and threat ids that are not in the checklist or the open threats are dropped, with a note. Findings with the same path, start line and CWE collapse to the most severe.
+6. Writes `findings.json` (stage `review`, source `ai-review`, tool = the adapter name with dashes, rule id `review-<first CWE>` or `review-general`), `summary.json`, `reply.json` and its meta, `diff.patch`, `checklist.json` and `threats.json`.
+
+The gate report has a `### Review` section listing the unsuppressed findings from the `review` stage (`None.` when empty). High and critical review findings block like any scanner finding and can be suppressed by fingerprint with a reason and expiry. Exit codes follow the adapter (2 invalid reply, 75 usage limit).
+
 ## DAST web stage
 
 Job `dast-web` (web only, required in the gate). `python -m factory.dast.harness up` creates the Docker network `factory-dast` with `--internal` (no route to the internet), builds the project's Dockerfile as `factory-app:<run id>`, and starts it detached with the alias `app`, `--read-only`, a tmpfs on `/tmp`, `--cap-drop ALL` and `no-new-privileges`. Only variables from `.env.example` are passed in. It then polls `http://app:<port><health_path>` from a pinned `curlimages/curl` container for up to 120 seconds and dumps the app logs on timeout.
