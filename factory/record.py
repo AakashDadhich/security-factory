@@ -15,7 +15,7 @@ BRANCH = "factory-record"
 RUNS_TO_READ = 10
 PUSH_ATTEMPTS = 3
 BOT_NAME = "aakashdadhich-factory-bot[bot]"
-BOT_EMAIL = "5502214+aakashdadhich-factory-bot[bot]@users.noreply.github.com"
+BOT_EMAIL = "349043243+aakashdadhich-factory-bot[bot]@users.noreply.github.com"
 
 
 class RecordError(Exception):
