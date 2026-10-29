@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 11 are done. Next in order is chunk 12 (dast-zap-baseline); 13 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). Pending owner decision: the `factory-gate` ruleset on `factory-test-web` (see `docs/required-check.md`). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 11 are done. Next in order is chunk 12 (dast-zap-baseline); 13 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -132,6 +132,7 @@ Chunks 00 to 11 are done. Next in order is chunk 12 (dast-zap-baseline); 13 and 
 
 - Gate (chunk 11): `python -m factory.gate --artifacts in --config .factory.yml --manifest in/setup/run-manifest.json --out out/gate [--needs <json>] [--policy policy.yml] [--today YYYY-MM-DD]`. Spec in `docs/pipeline.md`. `factory/stage_matrix.py` has `STAGES` (`Stage(name, platforms, modes, skippable)`) and `expected(platform, mode)`; a matrix stage can be skipped only if `skippable` lists a reason (`fork-pr`, `not-applicable`). Jobs in `needs` that are not in the matrix (`passthrough`, `hello-ai`) block on failure and may be skipped. Missing/failed stages become critical `stage-missing`/`stage-failed` check findings at `stages/<name>`, never suppressible. `policy.yml` holds `fail_on`; `.factory.yml` `policy.fail_on_extra` (medium, low, info) can only add. `suppressions:` entries are validated by the gate, not the schema (bad ones become medium `suppression-invalid-N` / `suppression-expired-N`).
 - Report format: `report.json` entries are findings plus `tools`, `stages`, `merged_fingerprints`, `suppressed`, `suppression`; the representative keeps its own valid `id` and `fingerprint`, so it is not a findings.json. `gate-result.json` has `status` (`pass`/`fail`), `counts` (unsuppressed), `suppressed`, `fail_on`, `blocking_fingerprints`, `mode`, `iteration`, `platform`, `stages`, `reasons`. Chunk 14 (record) and 21 (fix loop) should read these.
+- Ruleset `factory-gate` (id 26101424) is active on `factory-test-web`: requires `factory / gate` on the default branch; admin role (`RepositoryRole` 5) bypasses with mode `always`, so direct pushes to `factory-test-web` main still work. Steps in `docs/required-check.md`.
 - Gate job now checks out the project, has `security-events: write`, uploads artifact `gate` and uploads `merged.sarif` to code scanning with category `factory-gate` (`continue-on-error`, so fork PRs do not fail on it). The old `tests/test_gate_stub.py` and the `--optional` flag are gone.
 
 ## Session log
@@ -141,7 +142,7 @@ Added `factory/stage_matrix.py`, `policy.yml`, the real `factory/gate.py` (dedup
 - selftest run `40825901763`: `test`, `semgrep-rules`, `secrets-integration`, `macos-smoke`, `eslint-integration`, `lint-workflows` all `success`; `334 passed, 2 skipped`; 38 gate tests cover dedupe (Semgrep + CodeQL same line), policy tighten/loosen, suppression expiry, missing stage, web check matrix. Pass.
 - `factory-test-web` run `40825974576` (workflow_dispatch): all 9 jobs `success`; summary has the severity table (all 0), `**PASS**` and a Stages table with `deps-sbom`, `passthrough`, `hello-ai`, `sast-codeql`, `sast-eslint`, `sast-semgrep`, `secrets` all `ok`; artifact `gate` has 4 files; `merged.sarif` uploaded to code scanning. Pass.
 - Missing `sast-semgrep` artifact: simulated in `test_missing_stage_artifact_fails_closed` (critical `stage-missing`, gate exit 1), per the chunk's allowance. Pass.
-- Ruleset on `factory-test-web`: not applied, awaiting owner approval (GitHub settings change). Open.
+- `gh api repos/AakashDadhich/factory-test-web/rulesets`: `factory-gate`, id 26101424, `active`; its required_status_checks context is `factory / gate` on `~DEFAULT_BRANCH`; admin bypass `always`. Created by the master session with owner approval. Pass.
 
 ### 2026-10-29, chunk 10 (deps-and-sbom)
 Added the three lock pins, `factory/stages/deps_sbom.py`, tests and fixtures, the `deps-sbom` job (gate needs it), `make deps-sbom` and the Dependabot template. First `factory-test-web` run failed the gate because OSV scanned the factory checkout's fixture SBOMs; fixed with `--x-exclude` and relative paths.

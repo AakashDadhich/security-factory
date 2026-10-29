@@ -23,6 +23,7 @@ cat > ruleset.json <<'JSON'
   "target": "branch",
   "enforcement": "active",
   "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}],
   "rules": [
     {
       "type": "required_status_checks",
@@ -48,4 +49,4 @@ gh api repos/REPO/rulesets/RULESET_ID --jq '.rules[] | select(.type == "required
 
 - The bot never pushes to the default branch (P4), so a required check does not block factory work. Pushes straight to the default branch by the owner are also blocked until the check passes on a PR; that is the point.
 - If the check name changes (for example the stub's job is renamed), the ruleset keeps waiting for the old name and merges hang. Update the ruleset with the new name.
-- To bypass in an emergency, add the repository admin role as a bypass actor rather than turning enforcement off.
+- The ruleset on `factory-test-web` (id 26101424) has the repository admin role (`actor_id` 5, `RepositoryRole`) as a bypass actor with mode `always`, so the owner can still push straight to the default branch. Bypass the ruleset this way rather than turning enforcement off.
