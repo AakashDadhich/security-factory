@@ -59,6 +59,10 @@
           "then": {"properties": {"category": {"enum": ["spoofing", "tampering", "repudiation", "information-disclosure", "denial-of-service", "elevation-of-privilege"]}}}
         },
         {
+          "if": {"properties": {"framework": {"const": "linddun"}}},
+          "then": {"properties": {"category": {"enum": ["linking", "identifying", "non-repudiation", "detecting", "data-disclosure", "unawareness", "non-compliance"]}}}
+        },
+        {
           "if": {"properties": {"status": {"const": "mitigated"}}, "required": ["status"]},
           "then": {"required": ["evidence"]}
         }

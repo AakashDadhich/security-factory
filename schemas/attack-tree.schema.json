@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/attack-tree.schema.json",
+  "title": "Attack tree",
+  "description": "One attack tree for a high-risk feature, rooted at an attacker goal from the feature's abuse case. The model writes every field except leaf_threat_id, which the factory sets when it flattens each leaf into a threat.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["feature_id", "root"],
+  "properties": {
+    "feature_id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,39}$"},
+    "root": {"$ref": "#/$defs/node"}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1},
+    "level": {"enum": ["low", "medium", "high"]},
+    "rules_text": {
+      "type": "string",
+      "maxLength": 400,
+      "pattern": "^(?![\\s\\S]*(<!--|```))\\s*(?![#>`|*+-]|\\d+[.)]\\s)\\S"
+    },
+    "mitigation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "asvs_refs"],
+      "properties": {
+        "text": {"$ref": "#/$defs/rules_text"},
+        "asvs_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^V[0-9]+(\\.[0-9]+){2}$"}
+        }
+      }
+    },
+    "node": {
+      "description": "An attacker goal. An `and` node succeeds when every child does, an `or` node when any child does. A node with no children is a leaf and becomes one threat.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["goal", "type", "children", "mitigations"],
+      "properties": {
+        "goal": {"$ref": "#/$defs/rules_text"},
+        "type": {"enum": ["and", "or"]},
+        "children": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/node"}},
+        "mitigations": {"type": "array", "items": {"$ref": "#/$defs/mitigation"}},
+        "leaf_threat_id": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*-[0-9]+$"},
+        "previous_id": {"type": ["string", "null"]},
+        "element": {"description": "Leaf only: name of the pytm element or dataflow the attack targets.", "$ref": "#/$defs/text"},
+        "description": {"description": "Leaf only: how the attack works against this design.", "$ref": "#/$defs/text"},
+        "likelihood": {"$ref": "#/$defs/level"},
+        "impact": {"$ref": "#/$defs/level"}
+      },
+      "if": {"properties": {"children": {"maxItems": 0}}, "required": ["children"]},
+      "then": {
+        "required": ["element", "description", "likelihood", "impact"],
+        "properties": {"mitigations": {"minItems": 1}}
+      }
+    }
+  }
+}
