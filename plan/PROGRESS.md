@@ -45,7 +45,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 14 | project-record | done |
 | 15 | security-rules-and-renderer | done |
 | 16 | clarify-plan-stage | done |
-| 17 | threat-model-pytm-stride | todo |
+| 17 | threat-model-pytm-stride | in progress |
 | 18 | threat-model-linddun-attacktrees | todo |
 | 19 | secure-codegen-stage | todo |
 | 20 | second-agent-review | todo |
