@@ -90,6 +90,21 @@ jobs:
           python -m factory.threatmodel.pytm_runner tests/fixtures/threat-model/tm_notes.py --out "$RUNNER_TEMP/tm-good"
           head -n 5 "$RUNNER_TEMP/tm-good/dfd.dot"
 
+  codegen-integration:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-factory
+      - run: python -m factory.tools install semgrep semgrep-rules gitleaks pre-commit
+      - name: real pre-commit hooks block insecure code and secrets
+        env:
+          FACTORY_REQUIRE_HOOKS: "1"
+        run: python -m pytest -v -s tests/test_codegen.py -k integration
+
   semgrep-rules:
     runs-on: ubuntu-24.04
     permissions:

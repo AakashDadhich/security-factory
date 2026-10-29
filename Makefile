@@ -1,4 +1,4 @@
-.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint deps-sbom dast-up dast-web dast-down rules plan threat-model
+.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint deps-sbom dast-up dast-web dast-down rules plan threat-model codegen
 
 help:
 	@echo "make test         Run the factory test suite"
@@ -14,6 +14,7 @@ help:
 	@echo "make dast-down    Remove the DAST containers and network"
 	@echo "make plan        Run the plan stage on ISSUE_FILE (JSON with title and body)"
 	@echo "make threat-model Build the pytm model and STRIDE threats from PLAN_FILE"
+	@echo "make codegen    Implement PLAN_FILE on factory/ISSUE using the threat model in TM_DIR (needs a Claude token)"
 	@echo "make rules       Render CLAUDE.md and AGENTS.md for PLATFORM and ASVS_LEVEL (default 2) into out/rules"
 
 test:
@@ -67,3 +68,8 @@ PLAN_FILE ?= out/plan/plan.json
 
 threat-model:
 	python -m factory.stages.threat_model --plan $(PLAN_FILE) --previous security --out out/threat-model
+
+TM_DIR ?= in/threat-model
+
+codegen:
+	python -m factory.stages.codegen --plan $(PLAN_FILE) --threat-model $(TM_DIR) --platform $(PLATFORM) --issue $(ISSUE) --out out/codegen
