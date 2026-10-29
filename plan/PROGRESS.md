@@ -46,7 +46,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 15 | security-rules-and-renderer | done |
 | 16 | clarify-plan-stage | done |
 | 17 | threat-model-pytm-stride | done |
-| 18 | threat-model-linddun-attacktrees | todo |
+| 18 | threat-model-linddun-attacktrees | done |
 | 19 | secure-codegen-stage | todo |
 | 20 | second-agent-review | todo |
 | 21 | fix-loop | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 17 are done. Next in order is chunk 18 (LINDDUN and attack trees, building on the threat model stage). Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 18 are done. Next in order is chunk 19 (secure codegen; it should commit `security/tm.py` and `security/threats.json` from the `threat-model` artifact, plus `attack-trees/*.md` if wanted). Check `plan/00-index.md` for chunks 20 onward. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -162,7 +162,19 @@ Chunks 00 to 17 are done. Next in order is chunk 18 (LINDDUN and attack trees, b
 - Selftest job `pytm-integration` installs pytm and runs `tests/test_threat_model.py` with `FACTORY_REQUIRE_PYTM=1` (real pytm on the fixture, harness resets a custom threats file), plus the CLI on `tm_import_os.py` (must fail) and `tm_notes.py`.
 - The `gh` CLI fails TLS inside this Mac's sandbox (x509 OSStatus -26276); read-only `gh` calls need the sandbox off, and the unsandboxed `$TMPDIR` is `/var/folders/...`, not the sandbox one.
 
+- LINDDUN and attack trees (chunk 18): in `factory/stages/threat_model.py`, `linddun_pass` runs when `plan.personal_data`, `attack_tree_pass` runs once per id in `plan.high_risk_features`; otherwise skipped, and `out/threat-model/passes.json` is `{stride|linddun|attack-trees: {status: ran|skipped, reason, features?}}`. `merge(reply, previous, version, framework)` is now per framework (`merge_with_ids` also returns the ids); a skipped pass merges an empty reply, so older threats of that framework move to `removed`. Ids still share one `TM-NNN` counter. LINDDUN categories (7) are enforced in `schemas/threats.schema.json` for `framework: linddun`. Attack tree threats use the feature id as `category` and the leaf goal as `title`.
+- `schemas/attack-tree.schema.json` (`{feature_id, root}`, recursive node with `goal`, `type` and/or, `children`, `mitigations`, optional `leaf_threat_id`, `previous_id`; leaves need `element`, `description`, `likelihood`, `impact`, 1+ mitigations). `factory/threatmodel/attack_tree.py`: `reply_schema(goals, names, asvs)` (root goal pinned to the feature's abuse case goals), `check_shape` (max 5 levels, 40 nodes), `threat_items`, `with_leaf_ids`, `render_markdown`/`render_mermaid` (labels escaped). Artifact `threat-model` now also holds `attack-trees/<id>.md` (Mermaid), `<id>.json` (numbered tree), `<id>.feature.json`, replies and schemas, `linddun-reply*.json`, `passes.json`. Adapter stage names `threat-model-linddun`, `threat-model-attack-tree-<id lowercased>`; fakes in `tests/fixtures/fake/`. Snapshot `tests/snapshots/attack-tree-F1.md`. Existing `test_threat_model.py` plans are forced low-risk and non-personal so STRIDE-only tests stay unchanged.
+- Test project leftovers: `factory-test-web` issues #4 (admin delete endpoint) and #5 (/version endpoint) were created for chunk 18 checks and carry the `factory:spec` label, each with a plan comment.
+
 ## Session log
+
+### 2026-10-29, chunk 18 (threat-model-linddun-attacktrees)
+Added `schemas/attack-tree.schema.json`, `prompts/{threat-model-linddun,attack-tree}.md`, `factory/threatmodel/attack_tree.py`, the LINDDUN and attack tree passes in `factory/stages/threat_model.py`, `tests/test_threat_model_conditional.py` (20 test functions), fixtures, the Mermaid snapshot and docs. First selftest run (`40904692235`) failed one test that counted `.meta.json` files as trees (test bug); fixed in `df9eeb5`. Pushed with owner pre-approval.
+- Done-when: selftest run `40904867368` on `df9eeb5`: all 7 jobs `success`, `607 passed, 6 skipped` in `test`, `81 passed` in `pytm-integration`. Pass.
+- Done-when: notes spec issue #3 relabelled, run `40905072040` success. Plan: `personal_data` true, high-risk F2 and F3. `passes.json`: `linddun` ran, `attack-trees` ran for F2 and F3. `threats.json` has 16 stride, 7 `linddun`, 14 `attack-tree` threats. Pass.
+- Done-when: issue #4 "Add an admin endpoint that deletes any user's notes", run `40905110569` success. High-risk F1 and F2; `attack-trees/F1.md` and `F2.md` exist; `F1.md` starts with a `flowchart TD` Mermaid block (root "Destroy another user's notes...", leaves TM-020 to TM-025 and more with severities). Pass.
+- Done-when: issue #5 "Add a /version endpoint", run `40905117566` success. `personal_data` false, no high-risk features; `passes.json` has `linddun` skipped (the plan does not handle personal data) and `attack-trees` skipped (the plan has no high-risk features); only 9 stride threats, no `attack-trees/` folder. Pass.
+- The test project working tree is clean; no config was changed. Issues #4 and #5 remain open.
 
 ### 2026-10-29, master session: pytm sandbox
 Owner chose to run pytm in a container (the chunk 17 open decision). Added the `pytm-sandbox` lock entry (`python:3.12-slim` 3.12.16 by index digest), `sandbox_command` and `--sandbox docker|none` in `factory/threatmodel/pytm_runner.py` and the stage, installs in the `threat-model` and `pytm-integration` jobs, unit tests for the docker flags and timeout cleanup, and integration tests that run the fixture model sandboxed and probe that the container has no network, no host processes, no tokens and a read-only filesystem.
