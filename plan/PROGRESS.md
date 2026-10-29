@@ -40,7 +40,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 09 | sast-codeql-eslint-web | done |
 | 10 | deps-and-sbom | done |
 | 11 | gate-and-report | done |
-| 12 | dast-zap-baseline | todo |
+| 12 | dast-zap-baseline | done |
 | 13 | dast-zap-active-openapi | todo |
 | 14 | project-record | todo |
 | 15 | security-rules-and-renderer | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 11 are done. Next in order is chunk 12 (dast-zap-baseline); 13 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 12 are done. Next in order is chunk 13 (dast-zap-active-openapi); 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -135,7 +135,16 @@ Chunks 00 to 11 are done. Next in order is chunk 12 (dast-zap-baseline); 13 and 
 - Ruleset `factory-gate` (id 26101424) is active on `factory-test-web`: requires `factory / gate` on the default branch; admin role (`RepositoryRole` 5) bypasses with mode `always`, so direct pushes to `factory-test-web` main still work. Steps in `docs/required-check.md`.
 - Gate job now checks out the project, has `security-events: write`, uploads artifact `gate` and uploads `merged.sarif` to code scanning with category `factory-gate` (`continue-on-error`, so fork PRs do not fail on it). The old `tests/test_gate_stub.py` and the `--optional` flag are gone.
 
+- DAST (chunk 12): `python -m factory.dast.harness up|down [--config .factory.yml] [--run-id N] [--context .]` and `python -m factory.stages.dast_web --plan baseline --out out/dast-web [--config]`. Make targets `dast-up`, `dast-web`, `dast-down`. Lock entries `zap` (`ghcr.io/zaproxy/zaproxy` stable index digest `sha256:030d3df5...`, built 2026-10-26, version label `stable-2026-10-26`) and `curl` (`curlimages/curl` 8.23.0). Network `factory-dast` (`--internal`), app container `factory-app-<run_id>` with alias `app`, image `factory-app:<run_id>`. Plans live in `zap/<plan>.yaml` with `{{TARGET}}` templated to `http://app:<port>`; ZAP runs `zap.sh -cmd -silent -autorun /zap/wrk/<plan>.yaml` with a 777 work dir mounted at `/zap/wrk`, and the stage copies `zap-report.json` and `.html` to `out/dast-web/`. `dast_web.PLANS` is the allowlist, so chunk 13 adds its plan names there. Findings: one per alert per URL path and method (query ignored), tool `zap`, stage `dast-web`. `dast-web` is a required web-only gate stage.
+- The clean test app gives 0 ZAP alerts (spider only finds `/` and `/health`; helmet headers present). Chunk 13 will exercise more with the OpenAPI import.
+
 ## Session log
+
+### 2026-10-29, chunk 12 (dast-zap-baseline)
+Added the `zap` and `curl` container pins, `factory/dast/harness.py`, `zap/baseline.yaml`, `factory/stages/dast_web.py`, `tests/test_dast_web.py` with a fixture, the `dast-web` job (gate needs it) and the stage matrix entry. Master session pushed the commits.
+- selftest run `40828543624`: `test`, `lint-workflows`, `macos-smoke`, `eslint-integration`, `semgrep-rules`, `secrets-integration` all `success`; `363 passed, 2 skipped` including the conversion and harness tests. Pass.
+- `factory-test-web` run `40828637107` (workflow_dispatch): all 10 jobs `success`, including `dast-web` and `gate`. Artifact `dast-web` has `zap-report.html`, `zap-report.json` and `findings.json` (`[]`: ZAP raised no alerts, so no finding above low). Pass.
+- `dast-web` log: `docker network create --internal factory-dast`, then `app healthy at http://app:3000/health`, then the ZAP run, `0 findings`. Pass.
 
 ### 2026-10-29, chunk 11 (gate-and-report)
 Added `factory/stage_matrix.py`, `policy.yml`, the real `factory/gate.py` (dedupe, policy, suppressions, fail closed, report/SARIF outputs), `tests/test_gate.py` (replaces the stub tests), the schema extension, the gate job changes, `docs/pipeline.md` Gate section and `docs/required-check.md`. Master session pushed the commits.
