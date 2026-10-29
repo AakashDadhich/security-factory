@@ -5,17 +5,22 @@ on:
     branches-ignore: ['factory/**', 'factory-record']
   pull_request:
   workflow_dispatch:
+  issues:
+    types: [labeled]
 
 permissions: {}
 
 jobs:
   factory:
+    if: github.event_name != 'issues' || github.event.label.name == 'factory:spec' || github.event.label.name == 'factory:change'
     permissions:
       contents: read
+      issues: write
       security-events: write
     # Tracks the factory's main branch until the v1 tag exists (D17).
     uses: AakashDadhich/security-factory/.github/workflows/factory.yml@main # zizmor: ignore[unpinned-uses]
     with:
-      mode: check
+      mode: ${{ github.event_name == 'issues' && (github.event.label.name == 'factory:spec' && 'spec' || 'change') || 'check' }}
+      issue: ${{ github.event_name == 'issues' && github.event.issue.number || 0 }}
       factory-ref: main
     secrets: inherit # zizmor: ignore[secrets-inherit]
