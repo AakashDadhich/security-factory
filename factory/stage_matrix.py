@@ -19,6 +19,7 @@ STAGES = (
     Stage("sast-codeql", platforms=("web",)),
     Stage("sast-eslint", platforms=("web",)),
     Stage("deps-sbom"),
+    Stage("dast-web", platforms=("web",)),
 )
 
 
