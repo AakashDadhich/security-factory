@@ -7,6 +7,8 @@ on:
   workflow_dispatch:
   issues:
     types: [labeled]
+  repository_dispatch:
+    types: [factory-fix]
 
 permissions: {}
 
@@ -16,11 +18,14 @@ jobs:
     permissions:
       contents: read
       issues: write
+      actions: read
       security-events: write
     # Tracks the factory's main branch until the v1 tag exists (D17).
     uses: AakashDadhich/security-factory/.github/workflows/factory.yml@main # zizmor: ignore[unpinned-uses]
     with:
-      mode: ${{ github.event_name == 'issues' && (github.event.label.name == 'factory:spec' && 'spec' || 'change') || 'check' }}
-      issue: ${{ github.event_name == 'issues' && github.event.issue.number || 0 }}
+      mode: ${{ github.event_name == 'repository_dispatch' && 'fix' || github.event_name == 'issues' && (github.event.label.name == 'factory:spec' && 'spec' || 'change') || 'check' }}
+      issue: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.issue || github.event_name == 'issues' && github.event.issue.number || 0 }}
+      iteration: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.iteration || 0 }}
+      findings-run-id: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.findings_run_id || 0 }}
       factory-ref: main
     secrets: inherit # zizmor: ignore[secrets-inherit]
