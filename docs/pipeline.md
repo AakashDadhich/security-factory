@@ -122,7 +122,7 @@ Job `review` is the second-agent review: a fresh adversarial Claude pass over th
 
 When it runs:
 - Spec and change modes, after `codegen-commit` succeeded: head is the pushed commit (`needs.codegen-commit.outputs.sha`), base is `origin/<default branch>`.
-- Check mode on non-fork pull requests (`pull_request.base.sha` to `pull_request.head.sha`) and on pushes (`before` to the pushed commit; skipped when `before` is all zeros). These are not in the stage matrix yet, so they are not required; chunk 22 wires check mode fully.
+- Check mode when `ai-eligible` says `run_ai` (see [Check mode](#check-mode)): on a pull request the base is `pull_request.base.sha`, on a default-branch push it is `before`, and the head is the PR head or the pushed commit. A push that creates the branch (`before` all zeros) is diffed against the empty tree. `review` is a matrix stage in check mode too.
 - Fix mode is in the matrix for chunk 21 and is not wired into the workflow yet.
 
 `python -m factory.stages.review --base <rev> --head <rev> --out out/review [--repo .] [--asvs-level 2] [--max-diff-bytes 200000]`:
@@ -158,11 +158,72 @@ Secret `CLAUDE_CODE_OAUTH_TOKEN` is optional. Without it, `hello-ai` is skipped 
 
 `python -m factory.config --path .factory.yml` validates the file against `schemas/factory-config.schema.json` and writes the GitHub outputs `platform`, `asvs_level` and `openapi`. A `null` or missing `asvs_level` becomes `2` (D2). `openapi` is empty when `web.openapi` isn't set. `platform: web` needs a `web` block; `macos` and `ios` need an `apple` block. Paths must be relative, inside the repo and on one line.
 
+## Check mode
+
+Check mode is every `push` and `pull_request` that is not a spec, change or fix run. The scanners and the gate always run. The two AI stages, the threat-model update and the review, run only when `ai-eligible` allows it (D18). The job needs only `setup`, has `contents: read`, calls no model and reads no secret value: it receives `secrets.CLAUDE_CODE_OAUTH_TOKEN != ''` (a boolean) through `env:` and runs `python -m factory.eligibility`. `run_ai` is true only when all of these hold:
+
+| Condition | If not, `reason` |
+|---|---|
+| the event is `pull_request`, or a `push` (or `workflow_dispatch`) to the default branch | `work-in-progress-push` (also used for any other event) |
+| the PR head repo is not a fork | `fork-pr` |
+| the Claude token is available | `no-secret` |
+
+The reasons are checked in the order fork, work in progress, secret. A Dependabot PR is not a fork and its `secrets` context holds the Dependabot repo secrets, which include `CLAUDE_CODE_OAUTH_TOKEN`, so it gets the full pipeline. Dependabot runs get a read-only `GITHUB_TOKEN` and no Actions secrets, so the jobs that need the App key (`record`) do not apply to them. Spec, change and fix runs ignore `ai-eligible` (their model jobs depend on the chain from `plan` or `fix-input`).
+
+When `run_ai` is true:
+- `threat-model` checks out the PR head (or pushed commit) with full history, writes `in/diff/diff.patch` (`git diff <base> HEAD`, `security/` excluded, cut at 200 KB) and runs `python -m factory.stages.threat_model --diff in/diff/diff.patch --previous security --out out/threat-model`. Inputs are `security/tm.py` and `security/threats.json` when the project has them, plus the diff; with neither, the model is bootstrapped from the code. There is no plan, so only the pytm model and the STRIDE pass run: the LINDDUN and attack tree passes are recorded as skipped in `passes.json`, and existing threats of those frameworks are kept unchanged. The AI-written model still goes through the AST allowlist and the no-network sandbox.
+- `review` runs on the PR or push diff as described above.
+- Neither job commits or writes anything. Results are the artifacts `threat-model` and `review`. When the gate passes on a default-branch push, `record` copies them to `latest/threats.json` and `latest/review.json` on `factory-record`.
+
+When `run_ai` is false, both jobs are skipped and the scanners still run on the commit. A usage-limit failure (adapter exit 75) in either job is a failed stage, so the gate fails closed like any other stage failure; re-run the workflow after the limit resets.
+
+Fork PRs and secrets: the stub triggers on plain `pull_request`, never `pull_request_target`. For a fork PR GitHub then sends no secrets and a read-only token, and the workflow runs the fork's code only inside jobs that hold nothing worth stealing. `pull_request_target` would run with the base repo's secrets and write token while the job checks out or builds code from the fork, which is the classic way for an outsider to steal a token. A test fails if either spelling appears in any workflow or template. Fork PRs therefore skip the AI stages (`fork-pr`), skip `record` and cannot upload SARIF to code scanning (that step is allowed to fail).
+
+### Job graphs by mode
+
+Dashed edges mean the job is skipped in that mode. Every job also needs `authorize` through `setup`; the scanners are `secrets`, `sast-semgrep`, `sast-codeql`, `sast-eslint`, `deps-sbom` and `dast-web` (web). `record` runs after `gate`, except for fork PRs.
+
+Spec and change (issue labelled `factory:spec` or `factory:change`, allowlisted actor and author):
+
+```mermaid
+flowchart LR
+    authorize --> setup --> plan --> threat-model --> codegen-ai --> codegen-commit --> review --> scanners
+    plan --> plan-comment
+    scanners --> gate --> next-step
+    gate --> record
+```
+
+Fix (`repository_dispatch` `factory-fix`, iteration 1 or 2):
+
+```mermaid
+flowchart LR
+    authorize --> setup --> fix-input --> codegen-ai --> codegen-commit --> review --> scanners
+    scanners --> gate --> next-step
+    gate --> record
+    next-step -.->|gate failed, iteration below 2| dispatch([factory-fix, iteration + 1])
+    next-step -.->|iteration 2| needs-human([comment and factory:needs-human])
+```
+
+Check (every push and pull request):
+
+```mermaid
+flowchart LR
+    authorize --> setup --> ai-eligible
+    setup --> scanners
+    ai-eligible -->|run_ai| threat-model
+    ai-eligible -->|run_ai| review
+    review --> scanners
+    threat-model --> gate
+    scanners --> gate --> record
+```
+
+In check mode the scanners wait for `review` only so the review finishes first; a skipped `review` does not hold them back.
+
 ## Gate
 
 `python -m factory.gate --artifacts in --config .factory.yml --manifest in/setup/run-manifest.json --out out/gate --needs "$NEEDS"`, where `NEEDS` is `toJSON(needs)` (optional; without it the gate judges stages by their artifacts alone).
 
-- The stages it expects come from `factory/stage_matrix.py` for the manifest's platform and mode. Any other job in `needs` (for example `passthrough`, `hello-ai`) is checked too: a failure blocks, a skip does not. A matrix stage can only be skipped if its entry lists a skip reason (`fork-pr`, `not-applicable`).
+- The stages it expects come from `factory/stage_matrix.py` for the manifest's platform and mode. Any other job in `needs` (for example `passthrough`, `hello-ai`) is checked too: a failure blocks, a skip does not. A matrix stage can only be skipped if its entry lists a skip reason (`fork-pr`, `not-applicable`). The AI stages (`threat-model` and `review`, marked `ai=True`) are the exception: in check mode they may be skipped only when the `ai-eligible` job succeeded with `run_ai=false` and one of the three known reasons (`work-in-progress-push`, `fork-pr`, `no-secret`). The row then shows that reason, `gate-result.json` has `ai_skipped`, and `report.md` has the line `AI stages skipped: <reason>`. A skip with no such decision, or while `run_ai` is true, is `stage-missing`. In spec, change and fix modes the AI stages are never skippable. `ai-eligible` itself is a control job like `setup` and is not a stage row.
 - A missing, failed or invalid expected stage becomes a `critical` finding (`source: check`, rule `stage-missing` or `stage-failed`, location `stages/<name>`). These cannot be suppressed. An unusable run manifest also fails the gate.
 - Findings with the same path, overlapping lines and a shared CWE merge into one (highest severity wins; `tools`, `stages`, `cwe` and `merged_fingerprints` list everything). Findings without lines only merge with other lineless ones.
 - Policy: `policy.yml` in the factory sets `fail_on`. A project's `.factory.yml` can add `policy.fail_on_extra: [medium]` (medium, low or info only). The schema has no way to remove a level.
