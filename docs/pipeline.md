@@ -90,9 +90,31 @@ Jobs `codegen-ai` and `codegen-commit` (spec and change modes; the matrix also l
 
 ### codegen-commit
 
-No AI. It checks out `base_sha`, downloads `codegen-ai`, and in step `apply` (no token in the environment) re-checks the patch (same path rules, plus `--index` apply), re-runs pre-commit and commits as `aakashdadhich-factory-bot[bot]` with `feat: implement #<issue> (factory iteration <n>)` (iteration 0 until the fix loop). Only then does it mint an App token (`actions/create-github-app-token`, `contents: write`, this repo only) and push `HEAD:refs/heads/factory/<issue>` in a separate step. The push target must match `factory/<digits>` and never the default branch, the head must equal the recorded commit, and the push is never forced, so a branch that moved since `base_sha` is rejected. `FACTORY_APP_PRIVATE_KEY` is used only here and in `record`. A refused patch writes a `high` finding (`patch-refused` or `precommit-blocked`) and exits 1. Output: artifact `codegen-commit` (`commit.json`, `findings.json`, the rendered pre-commit config); the job output `sha` is the pushed commit.
+No AI. It checks out `base_sha`, downloads `codegen-ai`, and in step `apply` (no token in the environment) re-checks the patch (same path rules, plus `--index` apply), re-runs pre-commit and commits as `aakashdadhich-factory-bot[bot]` with `feat: implement #<issue> (factory iteration <n>)` (`fix: address findings on #<issue> (factory iteration <n>)` in fix mode). Only then does it mint an App token (`actions/create-github-app-token`, `contents: write`, this repo only) and push `HEAD:refs/heads/factory/<issue>` in a separate step. The push target must match `factory/<digits>` and never the default branch, the head must equal the recorded commit, and the push is never forced, so a branch that moved since `base_sha` is rejected. `FACTORY_APP_PRIVATE_KEY` is used only here and in `record`. A refused patch writes a `high` finding (`patch-refused` or `precommit-blocked`) and exits 1. Output: artifact `codegen-commit` (`commit.json`, `findings.json`, the rendered pre-commit config); the job output `sha` is the pushed commit.
 
-The two code generation stages are matrix stages for spec, change and fix modes. Fix mode is not wired into the workflow yet (chunk 21).
+The two code generation stages are matrix stages for spec, change and fix modes. Fix mode is described under [Fix loop](#fix-loop).
+
+## Fix loop
+
+A failed gate does not end an issue's run. The `next-step` job (no AI, `contents: read`, `issues: write`) runs after `gate` in spec, change and fix modes and calls `python -m factory.fixloop decide`:
+
+| Mode | Gate | Iteration | Action |
+|---|---|---|---|
+| spec, change, fix | fail | below 2 | `dispatch` |
+| spec, change, fix | fail | 2 | `stop` |
+| spec, change, fix | pass | any | `done` |
+| check, or no gate result | any | any | `none` |
+
+- `dispatch` mints an App token (`contents: write`, this repo only, the only place `next-step` holds the key) and sends `POST /repos/{repo}/dispatches` with `event_type: factory-fix` and `client_payload: {issue, iteration: <this + 1>, findings_run_id: <this run id>}`. Events made with the App token start runs, events made with `GITHUB_TOKEN` do not, which is why the App is used. The project stub maps `repository_dispatch` of type `factory-fix` to `mode: fix` and passes the payload as inputs `issue`, `iteration` and `findings-run-id`.
+- `stop` comments the gate report on the issue under the heading "Factory stopped after 2 fix attempts" and adds the label `factory:needs-human` (created by the job if missing).
+- `done` comments "Gate passed. Branch `factory/<issue>` is ready to merge." with the gate report. The owner merges (P4).
+- Comment text comes from findings, which can contain text from the code under test, so `@` mentions and links are defanged and the comment is cut below GitHub's size limit.
+
+`authorize` validates the fix inputs before anything else runs: `issue` and `findings-run-id` must be positive integers (at most 15 digits) and `iteration` must be 1 or 2. They reach scripts only through `env:`. A bad payload fails `authorize`, so `setup` and every model job are skipped and the gate does not run.
+
+In fix mode `plan`, `plan-comment` and `threat-model` are skipped. Job `fix-input` (`contents: read`, `actions: read`, no AI) runs `gh run download <findings-run-id> --name gate --name setup`, checks that the earlier run failed, belongs to the same issue and had iteration one lower, and writes `blocking.json` with only the findings listed in `blocking_fingerprints` (most severe first, at most 40, text clipped). `codegen-ai` stays at `contents: read` with no GitHub token: it downloads artifact `fix-input` and runs `python -m factory.stages.codegen --fix-findings in/fix-input/blocking.json`, which requires `factory/<issue>` to exist on origin, reads `security/plan.json`, `threats.json`, `tm.py` and the attack trees from that branch, and runs the agent with `prompts/fix.md` and `schemas/fix-reply.schema.json` (adapter stages `fix` and `fix-retry-N`). The same patch policy, pre-commit hooks and `codegen-commit` apply as in spec mode, so the fix is committed to `factory/<issue>` by the bot, then `review` and every scanner run again on the new commit. `summary.json` gains `fixes` (one entry per finding: `fixed`, `partial` or `not-fixed`, with files and a note), `account` and `open_questions`. The agent cannot run commands, so a fix is only proven by the next gate run.
+
+Concurrency: spec, change and fix runs share the group `factory-issue-<issue>` with `cancel-in-progress: false`, so runs for one issue queue instead of overlapping. Other runs get a group of their own. An issue gets at most three runs: the first, fix 1 and fix 2.
 
 ## Security review stage
 
@@ -123,10 +145,12 @@ Job `dast-web` (web only, required in the gate). `python -m factory.dast.harness
 
 | Input | Default | Meaning |
 |---|---|---|
-| `mode` | `check` | `spec`, `check`, `fix` or `change` (`check`, `spec` and `change` exist so far) |
+| `mode` | `check` | `spec`, `check`, `fix` or `change` |
 | `factory-ref` | `main` | Factory ref every job checks out into `.factory/` |
 | `config-path` | `.factory.yml` | Project config file |
-| `issue` | `0` | Issue number in spec and change modes, `0` otherwise |
+| `issue` | `0` | Issue number in spec, change and fix modes, `0` otherwise |
+| `iteration` | `0` | Fix loop round, 1 or 2 in fix mode, `0` otherwise |
+| `findings-run-id` | `0` | Fix mode: the run whose `gate` artifact lists the findings to fix |
 
 Secret `CLAUDE_CODE_OAUTH_TOKEN` is optional. Without it, `hello-ai` is skipped and the gate still runs. Fork PRs never receive it.
 
