@@ -47,7 +47,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 16 | clarify-plan-stage | done |
 | 17 | threat-model-pytm-stride | done |
 | 18 | threat-model-linddun-attacktrees | done |
-| 19 | secure-codegen-stage | todo |
+| 19 | secure-codegen-stage | in progress (code done, CI green; live spec run not yet done) |
 | 20 | second-agent-review | todo |
 | 21 | fix-loop | todo |
 | 22 | check-mode-wiring | todo |
@@ -167,6 +167,12 @@ Chunks 00 to 18 are done. Next in order is chunk 19 (secure codegen; it should c
 - Test project leftovers: `factory-test-web` issues #4 (admin delete endpoint) and #5 (/version endpoint) were created for chunk 18 checks and carry the `factory:spec` label, each with a plan comment.
 
 ## Session log
+
+### 2026-10-29, chunk 19 (secure-codegen-stage), IN PROGRESS
+Pushed to main: `pre-commit` 4.7.0 pin, `factory/patch_policy.py`, `factory/precommit.py`, `factory/stages/codegen.py`, `codegen_commit.py`, `prompts/codegen.md`, `schemas/codegen-reply.schema.json`, `templates/precommit/`, jobs `codegen-ai` and `codegen-commit`, scanning jobs now check out the pushed commit, selftest job `codegen-integration`, docs. Owner chose no command execution in `codegen-ai` (agent has Read/Grep/Glob/Edit/Write only, works in a copy without `.git`).
+- Done-when: selftest green on `23d1f6f` (run `40913320023`, all 8 jobs, incl. `codegen-integration` with real pre-commit, Semgrep and Gitleaks). Pass.
+- Done-when (spec run): NOT done. Issue #3 relabelled, run `40913560177`: `threat-model` failed with exit 75 (Claude usage limit), so `codegen-ai` and the rest skipped. Re-run later by removing and re-adding `factory:spec` on issue #3, then check branch `factory/3` (one bot commit), `git log origin/main` has no bot commits, scanning jobs ran on that commit. The workflow-grep check is covered by `test_app_private_key_only_reaches_codegen_commit_and_record`.
+- Not yet verified live: Gitleaks flags on the pinned version passed in `codegen-integration`; CodeQL upload for a SHA on `factory/N`; App token push rights.
 
 ### 2026-10-29, chunk 18 (threat-model-linddun-attacktrees)
 Added `schemas/attack-tree.schema.json`, `prompts/{threat-model-linddun,attack-tree}.md`, `factory/threatmodel/attack_tree.py`, the LINDDUN and attack tree passes in `factory/stages/threat_model.py`, `tests/test_threat_model_conditional.py` (20 test functions), fixtures, the Mermaid snapshot and docs. First selftest run (`40904692235`) failed one test that counted `.meta.json` files as trees (test bug); fixed in `df9eeb5`. Pushed with owner pre-approval.
