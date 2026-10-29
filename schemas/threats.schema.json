@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/threats.schema.json",
+  "title": "Threats",
+  "description": "Output of the threat model stage, committed as security/threats.json. `threats` holds current threats; `removed` holds threats from an earlier model that no longer apply, kept so their ids are never reused.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["model_version", "threats", "removed"],
+  "properties": {
+    "model_version": {
+      "description": "SHA-256 of the tm.py the threats were derived from.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "threats": {"type": "array", "items": {"$ref": "#/$defs/threat"}},
+    "removed": {"type": "array", "items": {"$ref": "#/$defs/threat"}}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1},
+    "level": {"enum": ["low", "medium", "high"]},
+    "threat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "framework", "category", "element", "title", "description", "likelihood", "impact", "severity", "mitigations", "status"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*-[0-9]+$"},
+        "framework": {"enum": ["stride", "linddun", "attack-tree"]},
+        "category": {"$ref": "#/$defs/text"},
+        "element": {"description": "Name of the pytm element or dataflow.", "$ref": "#/$defs/text"},
+        "title": {"$ref": "#/$defs/text"},
+        "description": {"$ref": "#/$defs/text"},
+        "likelihood": {"$ref": "#/$defs/level"},
+        "impact": {"$ref": "#/$defs/level"},
+        "severity": {"enum": ["critical", "high", "medium", "low"]},
+        "mitigations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "text", "asvs_refs"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*-[0-9]+-M[0-9]+$"},
+              "text": {"$ref": "#/$defs/text"},
+              "asvs_refs": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "pattern": "^V[0-9]+(\\.[0-9]+){2}$"}
+              }
+            }
+          }
+        },
+        "status": {"enum": ["open", "mitigated"]},
+        "evidence": {"description": "Path to the code or test that shows the mitigation.", "$ref": "#/$defs/text"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"framework": {"const": "stride"}}},
+          "then": {"properties": {"category": {"enum": ["spoofing", "tampering", "repudiation", "information-disclosure", "denial-of-service", "elevation-of-privilege"]}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "mitigated"}}, "required": ["status"]},
+          "then": {"required": ["evidence"]}
+        }
+      ]
+    }
+  }
+}

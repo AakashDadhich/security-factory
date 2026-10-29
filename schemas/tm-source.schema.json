@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/tm-source.schema.json",
+  "title": "Threat model source",
+  "description": "Reply of the pytm model-writing pass: the full Python source of security/tm.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tm_py"],
+  "properties": {
+    "tm_py": {"type": "string", "minLength": 1, "maxLength": 100000}
+  }
+}
