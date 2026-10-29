@@ -68,6 +68,28 @@ jobs:
           echo "REDACTED lines in gitleaks.sarif: $(grep -c REDACTED "$OUT/gitleaks.sarif")"
           python -c "import json, sys; n = len(json.load(open(sys.argv[1]))); print(f'{n} findings'); sys.exit(n != 2)" "$OUT/findings.json"
 
+  pytm-integration:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-factory
+      - run: python -m factory.tools install pytm
+      - name: threat model tests with the real pytm
+        env:
+          FACTORY_REQUIRE_PYTM: "1"
+        run: python -m pytest -v -s tests/test_threat_model.py
+      - name: pytm runner refuses import os and runs the notes model
+        run: |
+          if python -m factory.threatmodel.pytm_runner tests/fixtures/threat-model/tm_import_os.py --out "$RUNNER_TEMP/tm-bad"; then
+            echo "tm_import_os.py was accepted"; exit 1
+          fi
+          python -m factory.threatmodel.pytm_runner tests/fixtures/threat-model/tm_notes.py --out "$RUNNER_TEMP/tm-good"
+          head -n 5 "$RUNNER_TEMP/tm-good/dfd.dot"
+
   semgrep-rules:
     runs-on: ubuntu-24.04
     permissions:
