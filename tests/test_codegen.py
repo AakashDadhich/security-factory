@@ -218,8 +218,9 @@ def test_scripts_other_than_lifecycle_can_change(project):
 
 def test_symlinks_and_git_metadata_in_the_copy_are_refused(project):
     def evil(work: Path):
-        (work / "link").symlink_to("/etc/passwd")
-        (work / ".git").mkdir()
+        if not (work / "link").is_symlink():
+            (work / "link").symlink_to("/etc/passwd")
+        (work / ".git").mkdir(exist_ok=True)
         (work / ".git" / "config").write_text("[core]\n\tfsmonitor = touch /tmp/pwned\n")
 
     agent = Agent(evil)
@@ -291,9 +292,13 @@ def test_adapter_write_tools_are_requested_without_bash():
         adapter.resolve_tools(["Bash"], True)
 
 
-def test_cli_with_fake_adapter_fails_when_the_model_writes_nothing(project, monkeypatch):
+def test_cli_with_fake_adapter_fails_when_the_model_writes_nothing(project, tmp_path, monkeypatch):
+    responses = tmp_path / "responses"
+    responses.mkdir()
+    for stage in ("codegen", "codegen-fix-1", "codegen-fix-2"):
+        shutil.copyfile(FAKE / "codegen.json", responses / f"{stage}.json")
     monkeypatch.setenv("FACTORY_MODEL_ADAPTER", "fake")
-    monkeypatch.setenv("FACTORY_FAKE_RESPONSES", str(FAKE))
+    monkeypatch.setenv("FACTORY_FAKE_RESPONSES", str(responses))
     code = codegen.main(["--plan", str(project["plan"]), "--threat-model", str(project["tm"]), "--platform", "web",
                          "--issue", "3", "--repo", str(project["repo"]), "--out", str(project["out"])])
     assert code == 1
@@ -642,7 +647,7 @@ def test_model_job_chain_has_no_status_functions():
 
 def test_pre_commit_is_pinned_exactly():
     from factory import tools
-    entry = next(t for t in tools.load_lock() if t.name == "pre-commit")
+    entry = tools.load_lock()["pre-commit"]
     assert entry.kind == "pipx" and re.fullmatch(r"\d+\.\d+\.\d+", entry.version)
 
 
