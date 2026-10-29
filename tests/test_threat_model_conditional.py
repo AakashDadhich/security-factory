@@ -143,8 +143,7 @@ def test_one_attack_tree_per_high_risk_feature(project, fake_pytm):
     assert code == 0
     folder = out / "attack-trees"
     assert sorted(p.name for p in folder.glob("*.md")) == ["F1.md", "F2.md"]
-    assert sorted(p.name for p in folder.glob("*.json") if not p.name.endswith(("reply.json", "schema.json", "feature.json"))
-                  ) == ["F1.json", "F2.json"]
+    assert sorted(p.name for p in folder.glob("F?.json")) == ["F1.json", "F2.json"]
     assert "Read another user's notes." in (folder / "F2.md").read_text()
     doc = load(out)
     assert {t["category"] for t in by_framework(doc, "attack-tree")} == {"F1", "F2"}
