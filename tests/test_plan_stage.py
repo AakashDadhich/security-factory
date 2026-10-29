@@ -315,7 +315,7 @@ def test_comment_neutralises_model_text():
     summary = text.splitlines()[3]
     assert "@owner" not in summary and "@​owner" in summary
     assert "https://" not in summary and "www.evil" not in summary
-    assert "<img" not in summary and "\\<img" in summary
+    assert "\\<img src=x\\>" in summary and "<img" not in summary.replace("\\<", "")
     assert "\\[l\\]\\(u\\)" in summary and "\\#" in summary
 
 

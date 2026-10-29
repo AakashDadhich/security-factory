@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import json
 
@@ -218,7 +219,7 @@ def test_extra_job_skipped_is_fine_but_extra_job_failure_blocks(tmp_path):
 
 
 def test_stage_matrix_skip_reason_is_allowed(tmp_path, monkeypatch):
-    stages = tuple(stage_matrix.Stage(s.name, skippable=("fork-pr",) if s.name == "sast-codeql" else ()) for s in stage_matrix.STAGES)
+    stages = tuple(dataclasses.replace(s, skippable=("fork-pr",)) if s.name == "sast-codeql" else s for s in stage_matrix.STAGES)
     monkeypatch.setattr(stage_matrix, "STAGES", stages)
     root, cfg = setup_run(tmp_path, platform_stages=[s for s in WEB_STAGES if s != "sast-codeql"])
     assert run_gate(tmp_path, root, cfg, needs_for(**{"sast-codeql": "skipped"})) == 0
