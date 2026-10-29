@@ -95,7 +95,7 @@ jobs:
         run: >-
           python -m factory.manifest create
           --config "$CONFIG_PATH" --mode "$MODE" --factory-ref "$FACTORY_REF" --issue "$ISSUE"
-          --stage plan --stage threat-model --stage codegen-ai --stage codegen-commit --stage passthrough --stage hello-ai --stage secrets --stage sast-semgrep --stage sast-codeql --stage sast-eslint --stage deps-sbom --stage dast-web --stage gate
+          --stage plan --stage threat-model --stage codegen-ai --stage codegen-commit --stage review --stage passthrough --stage hello-ai --stage secrets --stage sast-semgrep --stage sast-codeql --stage sast-eslint --stage deps-sbom --stage dast-web --stage gate
           --out out/setup/run-manifest.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -323,6 +323,52 @@ jobs:
           path: out/codegen-commit/
           if-no-files-found: error
 
+  review:
+    needs: [setup, codegen-commit]
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (((inputs.mode == 'spec' || inputs.mode == 'change') && needs.codegen-commit.result == 'success') || (inputs.mode == 'check' && ((github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false) || (github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000')))) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.codegen-commit.outputs.sha || github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - uses: ./.factory/.github/actions/setup-factory
+      - run: python -m factory.tools install claude-code
+      # The reviewer only has Read, Grep and Glob, and this job holds no write credential or App key.
+      - name: security review stage
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          FACTORY_MODEL_ADAPTER: claude_code
+          FACTORY_CLAUDE_TIMEOUT: "900"
+          FACTORY_CLAUDE_MAX_TURNS: "25"
+          ASVS_LEVEL: ${{ needs.setup.outputs.asvs_level }}
+          MODE: ${{ inputs.mode }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$MODE" in
+            spec|change) base="origin/$DEFAULT_BRANCH" ;;
+            *) base="${PR_BASE:-$PUSH_BEFORE}" ;;
+          esac
+          python -m factory.stages.review --base "$base" --head HEAD --asvs-level "$ASVS_LEVEL" --out out/review
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: review
+          path: out/review/
+          if-no-files-found: error
+
   passthrough:
     needs: setup
     runs-on: ubuntu-24.04
@@ -384,7 +430,7 @@ jobs:
           if-no-files-found: error
 
   secrets:
-    needs: [setup, codegen-commit]
+    needs: [setup, codegen-commit, review]
     if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -413,7 +459,7 @@ jobs:
           if-no-files-found: error
 
   sast-semgrep:
-    needs: [setup, codegen-commit]
+    needs: [setup, codegen-commit, review]
     if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -444,7 +490,7 @@ jobs:
           if-no-files-found: error
 
   sast-codeql:
-    needs: [setup, codegen-commit]
+    needs: [setup, codegen-commit, review]
     if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change')) && needs.setup.outputs.platform == 'web' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -488,7 +534,7 @@ jobs:
           if-no-files-found: error
 
   sast-eslint:
-    needs: [setup, codegen-commit]
+    needs: [setup, codegen-commit, review]
     if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change')) && needs.setup.outputs.platform == 'web' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -520,7 +566,7 @@ jobs:
           if-no-files-found: error
 
   deps-sbom:
-    needs: [setup, codegen-commit]
+    needs: [setup, codegen-commit, review]
     if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -549,7 +595,7 @@ jobs:
           if-no-files-found: error
 
   dast-web:
-    needs: [setup, codegen-commit]
+    needs: [setup, codegen-commit, review]
     if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change')) && needs.setup.outputs.platform == 'web' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -590,7 +636,7 @@ jobs:
           if-no-files-found: error
 
   gate:
-    needs: [authorize, setup, plan, threat-model, codegen-ai, codegen-commit, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, deps-sbom, dast-web]
+    needs: [authorize, setup, plan, threat-model, codegen-ai, codegen-commit, review, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, deps-sbom, dast-web]
     # A refused spec or change run stops at authorize. In every other mode the gate always runs and fails closed.
     if: always() && (needs.authorize.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change'))
     runs-on: ubuntu-24.04

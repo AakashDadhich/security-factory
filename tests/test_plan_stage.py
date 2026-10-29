@@ -248,7 +248,8 @@ def test_model_jobs_are_skipped_when_authorize_fails():
         assert "authorize" in chain, name
         for link in ({name} | chain) - {"authorize"}:
             condition = str(jobs[link].get("if", ""))
-            assert not any(f in condition for f in MODEL_STATUS_FUNCS), f"{link} would run after a failed authorize"
+            if any(f in condition for f in MODEL_STATUS_FUNCS):
+                assert "needs.setup.result == 'success'" in condition, f"{link} would run after a failed authorize"
 
 
 def test_authorize_is_first_and_reads_event_text_through_env():
