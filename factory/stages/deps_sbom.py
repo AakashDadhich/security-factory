@@ -15,6 +15,7 @@ GRYPE = "grype"
 MERGED_TOOL = "osv-scanner+grype"
 OSV_EXIT_FINDINGS = 1
 OSV_EXIT_NO_PACKAGES = 128
+OSV_EXCLUDES = (".factory", "node_modules", "dist", "build", "Pods", ".build")
 EXCLUDES = ("**/node_modules/**", "**/dist/**", "**/build/**", "**/Pods/**", "**/.build/**", "./.factory/**")
 VULN_ID = re.compile(r"\b(?:CVE-\d{4}-\d{4,}|GHSA(?:-[0-9a-z]{4}){3}|OSV-\d{4}-\d+|[A-Z]{2,}-\d{4}-\d+)\b", re.IGNORECASE)
 OSV_PACKAGE = re.compile(r"[Pp]ackage '([^']+)'")
@@ -116,8 +117,12 @@ def _tool_env() -> dict:
 def run_osv(src: Path, report: Path, binary: str = "osv-scanner", runner=None) -> None:
     runner = runner or subprocess.run
     report.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [binary, "scan", "source", "-r", "--format", "sarif"]
+    for name in OSV_EXCLUDES:
+        cmd += ["--x-exclude", name]
+    cmd.append(str(src))
     with report.open("w") as handle:
-        proc = _run([binary, "scan", "source", "-r", "--format", "sarif", str(src)], runner, stdout=handle)
+        proc = _run(cmd, runner, stdout=handle)
     if proc.returncode == OSV_EXIT_NO_PACKAGES:
         print("osv-scanner found no lockfiles or manifests; treating as no findings")
         report.write_text(json.dumps({"version": "2.1.0", "runs": []}))

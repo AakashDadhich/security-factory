@@ -195,3 +195,11 @@ def test_main_returns_one_on_stage_error(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(stage, "run", boom)
     assert stage.main(["--src", str(tmp_path), "--out", str(tmp_path / "o")]) == 1
     assert "error: nope" in capsys.readouterr().err
+
+
+def test_osv_skips_the_factory_checkout_and_vendored_dirs(tmp_path):
+    tools = FakeTools()
+    stage.run(tmp_path, tmp_path / "out", runner=tools)
+    osv_cmd = tools.calls[0]
+    excluded = [osv_cmd[i + 1] for i, a in enumerate(osv_cmd) if a == "--x-exclude"]
+    assert ".factory" in excluded and "node_modules" in excluded
