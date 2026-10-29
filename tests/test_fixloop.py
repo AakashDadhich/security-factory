@@ -295,7 +295,8 @@ def test_fix_mode_workflow_wiring():
     assert j["plan"]["if"] == "inputs.mode == 'spec' || inputs.mode == 'change'"
     assert j["threat-model"]["if"] == "inputs.mode == 'spec' || inputs.mode == 'change'"
     assert j["fix-input"]["permissions"] == {"contents": "read", "actions": "read"}
-    assert "inputs.mode == 'fix'" in j["codegen-commit"]["if"]
+    commit_if = j["codegen-commit"]["if"]
+    assert "inputs.mode == 'fix'" in commit_if and "!cancelled()" in commit_if and "needs.codegen-ai.result == 'success'" in commit_if
     assert "inputs.mode == 'fix'" in j["review"]["if"]
     for name in ("secrets", "sast-semgrep", "deps-sbom"):
         assert "inputs.mode != 'fix'" in j[name]["if"], name

@@ -342,7 +342,7 @@ jobs:
 
   codegen-commit:
     needs: [setup, codegen-ai]
-    if: inputs.mode == 'spec' || inputs.mode == 'change' || inputs.mode == 'fix'
+    if: ${{ !cancelled() && needs.setup.result == 'success' && needs.codegen-ai.result == 'success' && (inputs.mode == 'spec' || inputs.mode == 'change' || inputs.mode == 'fix') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
