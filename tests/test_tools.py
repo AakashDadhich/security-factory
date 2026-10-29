@@ -392,3 +392,64 @@ def test_install_dispatches_git(monkeypatch, tmp_path):
     monkeypatch.setattr(tools, "install_git", lambda tool: seen.append(tool.name) or tmp_path)
     tools.install(Tool("g", "1", "git", repo="https://example.com/r", commit=GIT_SHA), "")
     assert seen == ["g"]
+
+
+HASH = "--hash=sha256:" + "e" * 64
+
+
+def venv_lock(tmp_path, monkeypatch, requirements_text, extra=""):
+    monkeypatch.setattr(tools, "FACTORY_ROOT", tmp_path)
+    (tmp_path / "reqs.txt").write_text(requirements_text)
+    return write_lock(tmp_path, f'[[tool]]\nname = "v"\nversion = "1.0"\nkind = "venv"\nrequirements = "reqs.txt"\n{extra}')
+
+
+def test_real_lock_pins_pytm_in_a_hashed_venv():
+    tool = tools.load_lock()["pytm"]
+    assert (tool.kind, tool.version, tool.requirements) == ("venv", "1.4.0", "tools/pytm/requirements.txt")
+    assert tools.describe(tool) == "pytm\t1.4.0\tvenv\ttools/pytm/requirements.txt"
+
+
+def test_venv_entry_parses(tmp_path, monkeypatch):
+    lock = venv_lock(tmp_path, monkeypatch, f"# pinned\nv==1.0 {HASH}\ndep==2 {HASH}\n")
+    assert tools.load_lock(lock)["v"].requirements == "reqs.txt"
+
+
+@pytest.mark.parametrize(
+    "requirements, extra, message",
+    [
+        (f"v==1.0 {HASH}\ndep==2\n", "", "without a sha256 hash: dep==2"),
+        (f"v==1.1 {HASH}\n", "", "does not pin v==1.0"),
+        (f"v==1.0 {HASH}\n", 'package = "other"\n', "does not pin other==1.0"),
+    ],
+)
+def test_venv_entry_rejects_unhashed_or_unpinned(tmp_path, monkeypatch, requirements, extra, message):
+    lock = venv_lock(tmp_path, monkeypatch, requirements, extra)
+    with pytest.raises(ToolError, match=message):
+        tools.load_lock(lock)
+
+
+@pytest.mark.parametrize("path", ["", "/etc/reqs.txt", "../reqs.txt", "missing.txt"])
+def test_venv_entry_rejects_bad_requirements_path(tmp_path, monkeypatch, path):
+    monkeypatch.setattr(tools, "FACTORY_ROOT", tmp_path)
+    lock = write_lock(tmp_path, f'[[tool]]\nname = "v"\nversion = "1"\nkind = "venv"\nrequirements = "{path}"\n')
+    with pytest.raises(ToolError, match="requirements"):
+        tools.load_lock(lock)
+
+
+def test_install_venv_requires_hashes_and_binary_wheels(tmp_path):
+    calls = []
+    python = tools.install_venv(Tool("v", "1", "venv", requirements="tools/v/reqs.txt"), tmp_path, run=calls.append)
+    assert python == tmp_path / "v" / "bin" / "python"
+    assert calls[0][1:] == ["-m", "venv", "--clear", str(tmp_path / "v")]
+    pip = calls[1]
+    assert pip[0] == str(python)
+    for flag in ("--require-hashes", "--no-deps", "--only-binary"):
+        assert flag in pip
+    assert pip[-1] == str(tools.FACTORY_ROOT / "tools" / "v" / "reqs.txt")
+
+
+def test_install_dispatches_venv(monkeypatch, tmp_path):
+    seen = []
+    monkeypatch.setattr(tools, "install_venv", lambda tool: seen.append(tool.name) or tmp_path / "v" / "bin" / "python")
+    tools.install(Tool("v", "1", "venv", requirements="r.txt"), "")
+    assert seen == ["v"]

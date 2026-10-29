@@ -13,11 +13,13 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-LOCK_PATH = Path(__file__).resolve().parent.parent / "tools" / "versions.lock"
+FACTORY_ROOT = Path(__file__).resolve().parent.parent
+LOCK_PATH = FACTORY_ROOT / "tools" / "versions.lock"
 BIN_DIR = Path.home() / ".factory" / "bin"
 
-KINDS = ("binary", "pipx", "npm", "container", "git")
+KINDS = ("binary", "pipx", "npm", "container", "git", "venv")
 GIT_DIR = Path.home() / ".factory"
+VENV_DIR = Path.home() / ".factory" / "venvs"
 ARCHIVES = ("tar.gz", "zip", "none")
 PLATFORM_FIELDS = ("url", "sha256", "archive", "bin")
 
@@ -35,6 +37,7 @@ class Tool:
     image: str | None = None
     repo: str | None = None
     commit: str | None = None
+    requirements: str | None = None
     platforms: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
@@ -75,6 +78,8 @@ def _validate(entry: dict) -> Tool:
             raise ToolError(f"{name}: git repo must use https")
         if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
             raise ToolError(f"{name}: git commit must be a full 40 character lowercase hex SHA")
+    if kind == "venv":
+        _check_requirements(name, entry.get("package") or name, entry["version"], entry.get("requirements", ""))
 
     return Tool(
         name=name,
@@ -84,8 +89,25 @@ def _validate(entry: dict) -> Tool:
         image=entry.get("image"),
         repo=entry.get("repo"),
         commit=entry.get("commit"),
+        requirements=entry.get("requirements"),
         platforms=platforms,
     )
+
+
+def _check_requirements(name: str, package: str, version: str, requirements: str) -> None:
+    rel = Path(requirements)
+    if not requirements or rel.is_absolute() or ".." in rel.parts:
+        raise ToolError(f"{name}: venv entry needs a 'requirements' path inside the factory")
+    path = FACTORY_ROOT / rel
+    if not path.is_file():
+        raise ToolError(f"{name}: requirements file {requirements} not found")
+    lines = [line.strip() for line in path.read_text().splitlines()]
+    lines = [line for line in lines if line and not line.startswith("#")]
+    unhashed = [line.split()[0] for line in lines if "--hash=sha256:" not in line]
+    if unhashed:
+        raise ToolError(f"{name}: requirements without a sha256 hash: {', '.join(unhashed)}")
+    if not any(line.split()[0] == f"{package}=={version}" for line in lines):
+        raise ToolError(f"{name}: {requirements} does not pin {package}=={version}")
 
 
 def load_lock(path: Path | None = None) -> dict[str, Tool]:
@@ -218,6 +240,19 @@ def install_git(tool: Tool, dest: Path | None = None, run=_run) -> Path:
     return dest
 
 
+def venv_python(name: str, root: Path | None = None) -> Path:
+    return (root or VENV_DIR) / name / "bin" / "python"
+
+
+def install_venv(tool: Tool, root: Path | None = None, run=_run) -> Path:
+    dest = (root or VENV_DIR) / tool.name
+    run([sys.executable, "-m", "venv", "--clear", str(dest)])
+    python = venv_python(tool.name, root)
+    run([str(python), "-m", "pip", "install", "--quiet", "--disable-pip-version-check",
+         "--require-hashes", "--no-deps", "--only-binary", ":all:", "-r", str(FACTORY_ROOT / tool.requirements)])
+    return python
+
+
 def install(tool: Tool, platform_key: str, bin_dir: Path | None = None) -> None:
     package = tool.package or tool.name
     if tool.kind == "binary":
@@ -232,6 +267,9 @@ def install(tool: Tool, platform_key: str, bin_dir: Path | None = None) -> None:
     elif tool.kind == "git":
         target = install_git(tool)
         print(f"installed {tool.name} {tool.commit} to {target}")
+    elif tool.kind == "venv":
+        target = install_venv(tool)
+        print(f"installed {tool.name} {tool.version} into the venv at {target.parent.parent}")
 
 
 def describe(tool: Tool) -> str:
@@ -241,6 +279,8 @@ def describe(tool: Tool) -> str:
         detail = tool.image
     elif tool.kind == "git":
         detail = f"{tool.repo}@{tool.commit}"
+    elif tool.kind == "venv":
+        detail = tool.requirements
     else:
         detail = tool.package or tool.name
     return f"{tool.name}\t{tool.version}\t{tool.kind}\t{detail}"
