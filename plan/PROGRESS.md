@@ -38,7 +38,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 07 | secrets-stage | done |
 | 08 | sast-semgrep | done |
 | 09 | sast-codeql-eslint-web | done |
-| 10 | deps-and-sbom | todo |
+| 10 | deps-and-sbom | done |
 | 11 | gate-and-report | todo |
 | 12 | dast-zap-baseline | todo |
 | 13 | dast-zap-active-openapi | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 09 are done. Next in order is chunk 10 (deps-and-sbom); 12 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, and adds `--stage <name>` to the manifest step in `setup`. AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 10 are done. Next in order is chunk 11 (gate-and-report); 12 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, and adds `--stage <name>` to the manifest step in `setup`. AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -127,7 +127,17 @@ Chunks 00 to 09 are done. Next in order is chunk 10 (deps-and-sbom); 12 and 15 c
 - Relativising SARIF paths must rebuild findings with `make_finding`; editing `location` in place breaks the fingerprint check.
 - A security-review hook flagged the stub's `security-events: write` on a reusable workflow at `@main` with `secrets: inherit`. Accepted: same owner's repo, required by the chunk, and `@v1` pinning is chunk 30.
 
+- Deps and SBOM (chunk 10): `python -m factory.stages.deps_sbom --src . --out out/deps-sbom [--image <ref>]` (`make deps-sbom`). Pins: osv-scanner 2.7.0 (raw binary, `archive = "none"`), syft 1.55.0, grype 0.121.0. Runs `osv-scanner scan source -r --format sarif` (stdout captured; exit 1 = findings, 128 = no lockfiles, treated as clean) with `--x-exclude` for `.factory`, `node_modules`, `dist`, `build`, `Pods`, `.build` (without it OSV scans the factory checkout's fixtures). Syft writes `sbom.cdx.json` (CycloneDX 1.7, includes GitHub Actions `uses:` as components); Grype runs on that SBOM after `grype db update`; `tool-meta.json` holds `grype.db.built` from `grype db status -o json`. Output also has `osv-scanner.sarif`, `grype.sarif`.
+- Dedupe: OSV and Grype results merge when package name and version match and their vuln ids overlap (OSV's "also known as" aliases link GHSA to CVE); the merged finding has tool `osv-scanner+grype` and the higher severity. Results whose package can't be parsed from the message are never merged. Same vuln id at the same lockfile path collapses to one finding (fingerprint has no package). Paths are made relative to `--src`. `deps-sbom` is a required gate job; `--image` is implemented but the job does not pass it yet (chunk 12 builds the image). Template `templates/project/.github/dependabot.yml` added.
+
 ## Session log
+
+### 2026-10-29, chunk 10 (deps-and-sbom)
+Added the three lock pins, `factory/stages/deps_sbom.py`, tests and fixtures, the `deps-sbom` job (gate needs it), `make deps-sbom` and the Dependabot template. First `factory-test-web` run failed the gate because OSV scanned the factory checkout's fixture SBOMs; fixed with `--x-exclude` and relative paths.
+- selftest run `40791300459`: `test`, `eslint-integration`, `semgrep-rules`, `lint-workflows`, `secrets-integration`, `macos-smoke` all `success`; `316 passed, 2 skipped`. Pass.
+- Dedupe test `test_same_vulnerability_from_both_tools_becomes_one_finding` and `test_merged_finding_has_combined_tool_and_higher_severity` PASSED (2 tool results become 1 finding). Pass.
+- `factory-test-web` run `40791325442` (workflow_dispatch): `deps-sbom` and `gate` `success`. `gh run download -n deps-sbom`: `sbom.cdx.json` has `"bomFormat": "CycloneDX"` and `express` 5.3.0, `findings.json` is `[]`, `tool-meta.json` has `grype.db.built` `2026-10-28T06:23:30Z`. Pass.
+- Gate on the clean test project: `success`. Pass.
 
 ### 2026-10-28, chunk 09 (sast-codeql-eslint-web)
 Added `tools/eslint/`, `factory/stages/sast_eslint.py`, tests and fixtures, the `sast-codeql` and `sast-eslint` jobs (gate needs both, optional), the `eslint-integration` selftest job, Make target `sast-eslint`, and `security-events: write` in the stub (also committed to `factory-test-web`). First selftest run failed (stale fingerprints after relativising, CodeQL pinned to a tag object SHA); fixed in `f8da2f5`.
