@@ -48,7 +48,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 17 | threat-model-pytm-stride | done |
 | 18 | threat-model-linddun-attacktrees | done |
 | 19 | secure-codegen-stage | done |
-| 20 | second-agent-review | todo |
+| 20 | second-agent-review | done |
 | 21 | fix-loop | todo |
 | 22 | check-mode-wiring | todo |
 | 23 | vulnerable-web-acceptance | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 19 are done. Next in order is chunk 20. Codegen (chunk 19) is documented in `docs/pipeline.md` ("Code generation stages"): `codegen-commit` outputs `sha`, scanning jobs check out `factory/<issue>` at that sha in spec and change modes, `factory.patch_policy` and `factory.precommit` are reusable. Check `plan/00-index.md` for chunks 20 onward. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 20 are done. Next in order is chunk 21. Codegen (chunk 19) is documented in `docs/pipeline.md` ("Code generation stages"): `codegen-commit` outputs `sha`, scanning jobs check out `factory/<issue>` at that sha in spec and change modes, `factory.patch_policy` and `factory.precommit` are reusable. Check `plan/00-index.md` for chunks 20 onward. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -166,7 +166,18 @@ Chunks 00 to 19 are done. Next in order is chunk 20. Codegen (chunk 19) is docum
 - `schemas/attack-tree.schema.json` (`{feature_id, root}`, recursive node with `goal`, `type` and/or, `children`, `mitigations`, optional `leaf_threat_id`, `previous_id`; leaves need `element`, `description`, `likelihood`, `impact`, 1+ mitigations). `factory/threatmodel/attack_tree.py`: `reply_schema(goals, names, asvs)` (root goal pinned to the feature's abuse case goals), `check_shape` (max 5 levels, 40 nodes), `threat_items`, `with_leaf_ids`, `render_markdown`/`render_mermaid` (labels escaped). Artifact `threat-model` now also holds `attack-trees/<id>.md` (Mermaid), `<id>.json` (numbered tree), `<id>.feature.json`, replies and schemas, `linddun-reply*.json`, `passes.json`. Adapter stage names `threat-model-linddun`, `threat-model-attack-tree-<id lowercased>`; fakes in `tests/fixtures/fake/`. Snapshot `tests/snapshots/attack-tree-F1.md`. Existing `test_threat_model.py` plans are forced low-risk and non-personal so STRIDE-only tests stay unchanged.
 - Test project leftovers: `factory-test-web` issues #4 (admin delete endpoint) and #5 (/version endpoint) were created for chunk 18 checks and carry the `factory:spec` label, each with a plan comment.
 
+- Second-agent review (chunk 20): `python -m factory.stages.review --base <rev> --head <rev> --out out/review [--repo .] [--asvs-level 2] [--max-diff-bytes 200000]`. Spec in `docs/pipeline.md` ("Security review stage"). Job `review` (`contents: read`, Claude token only) needs `[setup, codegen-commit]`; every scanner and `gate` need `review`. It runs in spec/change after `codegen-commit` (head = pushed sha, base = `origin/<default>`) and in check mode on non-fork PRs and pushes (`before` not zeros). The matrix expects `review` for spec, change and fix only, so check-mode runs are not required yet (chunk 22 should add check mode to the matrix and decide how usage-limit failures behave there). Fix mode is not wired (chunk 21 must give `review` a head).
+- Review output (`out/review/`): `findings.json` (stage/tool `review`/`claude-code`, source `ai-review`, rule `review-<cwe>` or `review-general`), `summary.json` (`base`, `head`, `asvs_level`, `files_reviewed`, `omitted`, `truncated`, `model_called`, `downgraded`), `diff.patch`, `checklist.json`, `threats.json` (open only), `reply.json`. `security/` is never reviewed. Guard: path not in the reviewed diff or lines not inside one reviewed hunk (changes plus 20 lines context) becomes `info`; `confidence: low` caps at `medium`; unknown ASVS or threat ids are dropped; truncation adds an `info` `review-truncated` check finding. The gate report has a `### Review` section (findings whose merged stages include `review`; a finding merged with a scanner can show the scanner's title).
+- `test_model_jobs_are_skipped_when_authorize_fails` now allows a status function in a model job's `if` only when it also requires `needs.setup.result == 'success'` (review needs `!cancelled()` so check-mode runs with `codegen-commit` skipped still work).
+- Test project leftovers: branch `factory/scratch-sqli` (commit with `src/noteLookup.ts`, planted SQL concatenation) still exists on `factory-test-web`, PR #6 closed unmerged. Delete the branch after the owner agrees.
+
 ## Session log
+
+### 2026-10-29, chunk 20 (second-agent-review)
+Added `schemas/review.schema.json`, `prompts/security-review.md`, `factory/stages/review.py`, `tests/test_review.py` (44 tests), `tests/fixtures/fake/review.json`, the `review` job, matrix entry, gate Review section, manifest stage and docs. Pushed with owner pre-approval.
+- Done-when: selftest run `40951152647` on `a07643c`: all 8 jobs `success`, `752 passed, 7 skipped` (guard, confidence cap, truncation and schema tests included). Pass.
+- Done-when: issue #3 relabelled, run `40951413800` all 18 jobs `success`. `codegen-commit` ended 20:47:00, `review` ran 20:47:07 to 20:47:38, the scanners started 20:47:40. Review ran once (claude-sonnet-5-5, 15 s), 5 files, 173 KB diff, 1 finding that the guard downgraded to `info` (lines outside the changed hunks). The gate report has `### Review` (listing that finding). Pass.
+- Done-when: scratch branch `factory/scratch-sqli` with `db.query("..." + req.params.id + "...")`, PR #6 (check mode, since fix mode is not wired). Run `40952827880`: `review` reported `high` "SQL injection via string-concatenated note id" at `src/noteLookup.ts:4` plus a `medium`; the gate failed (`1 finding(s) at a blocking severity`). PR closed unmerged. Branch deletion waits for the owner. Pass.
 
 ### 2026-10-29, chunk 19 (secure-codegen-stage)
 Pushed to main: `pre-commit` 4.7.0 pin, `factory/patch_policy.py`, `factory/precommit.py`, `factory/stages/codegen.py`, `codegen_commit.py`, `prompts/codegen.md`, `schemas/codegen-reply.schema.json`, `templates/precommit/`, jobs `codegen-ai` and `codegen-commit`, scanning jobs now check out the pushed commit, selftest job `codegen-integration`, docs. Owner chose no command execution in `codegen-ai` (agent has Read/Grep/Glob/Edit/Write only, works in a copy without `.git`).
