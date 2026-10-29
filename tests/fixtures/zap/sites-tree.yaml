@@ -1,0 +1,37 @@
+- node: Sites
+  children:
+  - node: http://app:3000
+    url: http://app:3000
+    method: GET
+    responseLength: 905
+    statusCode: 404
+    children:
+    - node: GET:api
+      url: http://app:3000/api
+      method: GET
+      responseLength: 905
+      statusCode: 404
+    - node: api
+      url: http://app:3000/api
+      method: GET
+      children:
+      - node: GET:greeting(name)
+        url: http://app:3000/api/greeting?name=Ada
+        method: GET
+        responseLength: 902
+        statusCode: 200
+    - node: GET:health
+      url: http://app:3000/health
+      method: GET
+      responseLength: 891
+      statusCode: 200
+    - node: GET:robots.txt
+      url: http://app:3000/robots.txt
+      method: GET
+      responseLength: 905
+      statusCode: 404
+    - node: GET:sitemap.xml
+      url: http://app:3000/sitemap.xml
+      method: GET
+      responseLength: 905
+      statusCode: 404

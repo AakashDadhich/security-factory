@@ -158,3 +158,49 @@ def test_stage_defaults_to_the_full_plan():
     import inspect
 
     assert 'default="full"' in inspect.getsource(stage.main)
+
+
+SITES_FIXTURE = Path(__file__).parent / "fixtures" / "zap" / "sites-tree.yaml"
+
+
+def _fake_zap_with(tree: bool):
+    def fake_zap(cmd):
+        work = Path(next(c for c in cmd if c.endswith(":/zap/wrk:rw")).split(":")[0])
+        (work / "zap-report.json").write_text(ACTIVE_FIXTURE.read_text())
+        if tree:
+            (work / "sites-tree.yaml").write_text(SITES_FIXTURE.read_text())
+        return SimpleNamespace(returncode=0)
+
+    return fake_zap
+
+
+def _no_openapi_config(tmp_path):
+    config = tmp_path / ".factory.yml"
+    config.write_text(WEB_CONFIG.replace("  openapi: openapi.yaml\n", ""))
+    return config
+
+
+def test_site_paths_come_from_the_sites_tree():
+    paths = stage.site_paths(yaml.safe_load(SITES_FIXTURE.read_text()))
+    assert "/health" in paths
+    assert "/api/greeting" in paths
+    assert paths == sorted(set(paths))
+
+
+def test_site_paths_ignores_malformed_trees():
+    assert stage.site_paths(None) == []
+    assert stage.site_paths([{"node": "x", "children": "bad"}, "oops"]) == []
+
+
+def test_run_writes_sites_json_from_the_exported_tree(tmp_path):
+    out = tmp_path / "out"
+    stage.run("full", out, _no_openapi_config(tmp_path), "zap@sha256:abc", runner=_fake_zap_with(True), project_dir=tmp_path)
+    sites = json.loads((out / "sites.json").read_text())
+    assert "/health" in sites["paths"] and "/api/greeting" in sites["paths"]
+    assert (out / "sites-tree.yaml").is_file()
+
+
+def test_run_without_exported_tree_writes_no_sites_json(tmp_path):
+    out = tmp_path / "out"
+    stage.run("full", out, _no_openapi_config(tmp_path), "zap@sha256:abc", runner=_fake_zap_with(False), project_dir=tmp_path)
+    assert not (out / "sites.json").exists()

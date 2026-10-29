@@ -4,6 +4,9 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
+
+import yaml
 
 from factory import config as factory_config
 from factory import findings, tools
@@ -18,6 +21,7 @@ PLAN_DIR = dast_plan.PLAN_DIR
 RISK = {"3": "high", "2": "medium", "1": "low", "0": "info"}
 REPORT_NAME = "zap-report"
 SITES_TREE = "sites-tree.yaml"
+SITES_JSON = "sites.json"
 
 
 class StageError(Exception):
@@ -76,6 +80,30 @@ def convert(report: dict) -> list[dict]:
     return list(by_fingerprint.values())
 
 
+def site_paths(tree) -> list[str]:
+    paths: set[str] = set()
+
+    def walk(nodes) -> None:
+        for node in nodes if isinstance(nodes, list) else []:
+            if not isinstance(node, dict):
+                continue
+            url = node.get("url")
+            if isinstance(url, str):
+                paths.add(urlsplit(url).path or "/")
+            walk(node.get("children"))
+
+    walk(tree)
+    return sorted(paths)
+
+
+def write_sites(work: Path, out: Path) -> None:
+    source = work / SITES_TREE
+    if not source.is_file():
+        return
+    paths = site_paths(yaml.safe_load(source.read_text()))
+    (out / SITES_JSON).write_text(json.dumps({"paths": paths}, indent=2) + "\n")
+
+
 def run(plan: str, out: Path, config_path: Path, image: str, runner=None, project_dir: Path = Path(".")) -> list[dict]:
     runner = runner or subprocess.run
     cfg = factory_config.load(config_path)
@@ -104,6 +132,7 @@ def run(plan: str, out: Path, config_path: Path, image: str, runner=None, projec
     for name in (f"{REPORT_NAME}.json", f"{REPORT_NAME}.html", SITES_TREE):
         if (work / name).is_file():
             shutil.copy(work / name, out / name)
+    write_sites(work, out)
     shutil.rmtree(work, ignore_errors=True)
     try:
         results = convert(json.loads((out / f"{REPORT_NAME}.json").read_text()))
