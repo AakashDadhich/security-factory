@@ -1,0 +1,41 @@
+{
+  "@programName": "ZAP",
+  "@version": "2.17.0",
+  "site": [
+    {
+      "@name": "http://app:3000",
+      "alerts": [
+        {
+          "pluginid": "40018",
+          "alertRef": "40018",
+          "name": "SQL Injection",
+          "riskcode": "3",
+          "desc": "<p>SQL injection may be possible.</p>",
+          "instances": [{"uri": "http://app:3000/api/greeting?name=%27", "method": "GET"}],
+          "solution": "<p>Use parameterised queries.</p>",
+          "cweid": "89"
+        },
+        {
+          "pluginid": "40012",
+          "alertRef": "40012",
+          "name": "Cross Site Scripting (Reflected)",
+          "riskcode": "2",
+          "desc": "<p>Reflected XSS.</p>",
+          "instances": [{"uri": "http://app:3000/health?q=%3Cscript%3E", "method": "GET"}],
+          "solution": "<p>Encode output.</p>",
+          "cweid": "79"
+        },
+        {
+          "pluginid": "90022",
+          "alertRef": "90022",
+          "name": "Application Error Disclosure",
+          "riskcode": "1",
+          "desc": "<p>Error page leaks details.</p>",
+          "instances": [{"uri": "http://app:3000/api/greeting", "method": "POST"}],
+          "solution": "<p>Return generic errors.</p>",
+          "cweid": "550"
+        }
+      ]
+    }
+  ]
+}
