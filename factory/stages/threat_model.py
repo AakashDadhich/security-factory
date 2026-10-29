@@ -196,12 +196,12 @@ def load_plan(plan_path: Path) -> dict:
 
 
 def run(plan_path: Path, out: Path, previous_dir: Path | None, python: Path, workdir: Path | None = None,
-        timeout: int = pytm_runner.TIMEOUT_SECONDS) -> int:
+        timeout: int = pytm_runner.TIMEOUT_SECONDS, image: str | None = None) -> int:
     load_plan(plan_path)
     previous_paths, previous = load_previous(previous_dir)
     if previous_paths:
         print(f"updating the existing model from {', '.join(map(str, previous_paths))}")
-    code, model = pytm_runner.build(plan_path, out, previous_paths, python, workdir, timeout)
+    code, model = pytm_runner.build(plan_path, out, previous_paths, python, workdir, timeout, image)
     if model is None:
         return code
     model_version = hashlib.sha256((out / "tm.py").read_bytes()).hexdigest()
@@ -244,9 +244,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pytm-python", type=Path, default=tools.venv_python("pytm"))
     parser.add_argument("--timeout", type=int, default=pytm_runner.TIMEOUT_SECONDS)
     parser.add_argument("--workdir", type=Path)
+    parser.add_argument("--sandbox", choices=("docker", "none"), default="docker",
+                        help="run pytm in the pinned no-network container (default) or directly")
     args = parser.parse_args(argv)
     try:
-        return run(args.plan, args.out, args.previous, args.pytm_python, args.workdir, args.timeout)
+        image = pytm_runner.sandbox_image(args.sandbox)
+        return run(args.plan, args.out, args.previous, args.pytm_python, args.workdir, args.timeout, image)
     except (ThreatModelError, RunnerError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

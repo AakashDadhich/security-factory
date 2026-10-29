@@ -60,7 +60,7 @@ def run_stage(project, python, out_name="out", previous="security"):
     out = project / out_name
     code = threat_model.main([
         "--plan", str(project / "plan.json"), "--out", str(out), "--previous", str(project / previous),
-        "--pytm-python", str(python), "--workdir", str(project),
+        "--pytm-python", str(python), "--workdir", str(project), "--sandbox", "none",
     ])
     return code, out
 
@@ -163,6 +163,61 @@ def test_pytm_runs_without_secrets_in_env(tmp_path, monkeypatch):
     keys = json.loads(pytm_runner.execute(Path(sys.executable), script, [], 30))
     assert "CLAUDE_CODE_OAUTH_TOKEN" not in keys and "GITHUB_TOKEN" not in keys
     assert set(keys) <= {"PATH", "LANG", "LC_ALL", "HOME", "LC_CTYPE", "__CF_USER_TEXT_ENCODING"}
+
+
+def fake_venv(tmp_path) -> Path:
+    site = tmp_path / "venv" / "lib" / "python3.12" / "site-packages"
+    site.mkdir(parents=True)
+    (tmp_path / "venv" / "bin").mkdir()
+    return tmp_path / "venv" / "bin" / "python"
+
+
+def test_sandbox_command_isolates_pytm(tmp_path):
+    python = fake_venv(tmp_path)
+    cmd = pytm_runner.sandbox_command("img@sha256:abc", python, pytm_runner.HARNESS, tmp_path, ["tm.py", "--dfd"], "n1")
+    joined = " ".join(cmd)
+    for flag in ("--network none", "--read-only", "--cap-drop ALL", "--security-opt no-new-privileges", "--rm"):
+        assert flag in joined
+    assert f"{tmp_path.resolve()}:/work:rw" in cmd
+    assert f"{tmp_path / 'venv' / 'lib' / 'python3.12' / 'site-packages'}:/usr/local/lib/python3.12/site-packages:ro" in cmd
+    assert f"{pytm_runner.HARNESS}:/factory/pytm_harness.py:ro" in cmd
+    assert cmd[-5:] == ["python", "-I", "/factory/pytm_harness.py", "tm.py", "--dfd"]
+    assert cmd[cmd.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
+    assert not any(a.startswith("-e") and "TOKEN" in a for a in cmd)
+    assert [cmd[i + 1] for i, a in enumerate(cmd) if a == "-e"] == ["HOME=/work"]
+
+
+def test_sandbox_needs_exactly_one_site_packages(tmp_path):
+    python = fake_venv(tmp_path)
+    (tmp_path / "venv" / "lib" / "python3.13" / "site-packages").mkdir(parents=True)
+    with pytest.raises(pytm_runner.RunnerError, match="found 2"):
+        pytm_runner.site_packages(python)
+
+
+def test_sandbox_is_the_default_and_pinned_by_digest():
+    image = pytm_runner.sandbox_image("docker")
+    assert image.startswith("docker.io/library/python@sha256:")
+    assert pytm_runner.sandbox_image("none") is None
+    for module in (pytm_runner, threat_model):
+        parser_text = Path(module.__file__).read_text()
+        assert 'choices=("docker", "none"), default="docker"' in parser_text
+
+
+def test_sandbox_timeout_removes_the_container(tmp_path, monkeypatch):
+    python = fake_venv(tmp_path)
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:2] == ["docker", "run"]:
+            raise subprocess.TimeoutExpired(cmd, 1)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(pytm_runner.subprocess, "run", fake_run)
+    with pytest.raises(ModelRejected, match="timed out"):
+        pytm_runner.execute(python, pytm_runner.HARNESS, ["tm.py"], 1, tmp_path, "img@sha256:abc")
+    name = calls[0][calls[0].index("--name") + 1]
+    assert calls[1] == ["docker", "rm", "-f", name]
 
 
 def test_pytm_timeout_is_a_model_error(tmp_path):
@@ -359,7 +414,8 @@ def test_threat_model_job_is_wired_with_least_privilege():
     assert job["permissions"] == {"contents": "read"}
     text = json.dumps(job)
     assert "FACTORY_APP_PRIVATE_KEY" not in text and "create-github-app-token" not in text
-    assert "python -m factory.tools install claude-code pytm" in text
+    assert "python -m factory.tools install claude-code pytm pytm-sandbox" in text
+    assert "--sandbox none" not in text
     assert "threat-model" in jobs["gate"]["needs"]
     setup_steps = json.dumps(jobs["setup"]["steps"])
     assert "--stage threat-model" in setup_steps
@@ -413,3 +469,50 @@ def test_integration_harness_resets_a_custom_threats_file(tmp_path):
     pytm_runner.execute(python, pytm_runner.HARNESS, [str(model), "--json", str(raw)], 60, tmp_path)
     found = {f.get("threat_id") for f in json.loads(raw.read_text())["findings"]}
     assert found and "FACTORYTEST" not in found
+
+
+def require_sandbox():
+    python = tools.venv_python("pytm")
+    ready = python.is_file() and shutil.which("docker")
+    if not ready:
+        if os.environ.get("FACTORY_REQUIRE_PYTM"):
+            pytest.fail(f"pytm and docker are required ({python}, docker on PATH: {bool(shutil.which('docker'))})")
+        pytest.skip("pytm venv or docker not available")
+    return python, pytm_runner.sandbox_image("docker")
+
+
+def test_integration_sandboxed_pytm_runs_the_fixture_model(tmp_path):
+    python, image = require_sandbox()
+    model = pytm_runner.check_and_run(GOOD_TM, tmp_path, python, image=image)
+    assert set(pytm_runner.element_names(model)) == EXPECTED_NAMES
+    assert "digraph" in (tmp_path / "dfd.dot").read_text()
+
+
+def test_integration_sandbox_has_no_network_processes_or_tokens(tmp_path, monkeypatch):
+    python, image = require_sandbox()
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-secret")
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "import json, os, socket\n"
+        "try:\n"
+        "    socket.create_connection(('1.1.1.1', 53), timeout=3)\n"
+        "    net = True\n"
+        "except OSError:\n"
+        "    net = False\n"
+        "pids = [p for p in os.listdir('/proc') if p.isdigit()]\n"
+        "try:\n"
+        "    open('/usr/local/lib/probe-write', 'w')\n"
+        "    writable = True\n"
+        "except OSError:\n"
+        "    writable = False\n"
+        "print(json.dumps({'net': net, 'pids': len(pids), 'uid': os.getuid(), 'env': sorted(os.environ),\n"
+        "                  'writable': writable, 'pytm': __import__('pytm').__name__}))\n"
+    )
+    seen = json.loads(pytm_runner.execute(python, probe, [], 60, tmp_path, image))
+    print(seen)
+    assert seen["net"] is False
+    assert seen["pids"] <= 3
+    assert seen["uid"] != 0
+    assert seen["writable"] is False
+    assert seen["pytm"] == "pytm"
+    assert not any("TOKEN" in k for k in seen["env"])

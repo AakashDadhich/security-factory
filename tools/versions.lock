@@ -97,3 +97,9 @@ name = "pytm"
 version = "1.4.0"
 kind = "venv"
 requirements = "tools/pytm/requirements.txt"
+
+[[tool]]
+name = "pytm-sandbox"
+version = "3.12.16-slim"
+kind = "container"
+image = "docker.io/library/python@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a72aeb34f30d159"

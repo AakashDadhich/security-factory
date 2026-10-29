@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 from factory import adapter, tools
@@ -71,6 +72,9 @@ FORBIDDEN_NODES = (
 REQUIRED_CALLS = ("TM", "Boundary", "Actor", "Datastore", "Dataflow")
 PROCESS_CALLS = ("Server", "Process", "SetOfProcesses", "Lambda")
 ENV_KEEP = ("PATH", "LANG", "LC_ALL")
+SANDBOX_TOOL = "pytm-sandbox"
+CONTAINER_WORK = "/work"
+CONTAINER_SCRIPTS = "/factory"
 
 
 class RunnerError(Exception):
@@ -153,20 +157,54 @@ def _tail(text: str) -> str:
     return text if len(text) <= OUTPUT_CAP else "..." + text[-OUTPUT_CAP:]
 
 
-def execute(python: Path, script: Path, args: list[str], timeout: int, cwd: Path | None = None) -> str:
+def site_packages(python: Path) -> Path:
+    found = sorted(python.parent.parent.glob("lib/python3*/site-packages"))
+    if len(found) != 1:
+        raise RunnerError(f"expected one site-packages folder in the venv of {python}, found {len(found)}")
+    return found[0]
+
+
+def sandbox_command(image: str, python: Path, script: Path, work: Path, args: list[str], name: str) -> list[str]:
+    site = site_packages(python)
+    # The venv's packages replace the image's own site-packages, which -I still loads (unlike PYTHONPATH).
+    container_site = f"/usr/local/lib/{site.parent.name}/site-packages"
+    return [
+        "docker", "run", "--rm", "--name", name, "--network", "none", "--read-only",
+        "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+        "--pids-limit", "128", "--memory", "1g", "--user", f"{os.getuid()}:{os.getgid()}",
+        "-e", f"HOME={CONTAINER_WORK}", "-w", CONTAINER_WORK,
+        "-v", f"{work.resolve()}:{CONTAINER_WORK}:rw",
+        "-v", f"{site}:{container_site}:ro",
+        "-v", f"{script.resolve()}:{CONTAINER_SCRIPTS}/{script.name}:ro",
+        image, "python", "-I", f"{CONTAINER_SCRIPTS}/{script.name}", *args,
+    ]
+
+
+def execute(python: Path, script: Path, args: list[str], timeout: int, cwd: Path | None = None,
+            image: str | None = None) -> str:
     cwd = cwd or script.parent
     env = {k: os.environ[k] for k in ENV_KEEP if k in os.environ}
     env["HOME"] = str(cwd)
+    name = f"factory-pytm-{uuid.uuid4().hex[:12]}"
+    if image:
+        cmd = sandbox_command(image, python, script, cwd, args, name)
+    else:
+        cmd = [str(python), "-I", str(script), *args]
     try:
         result = subprocess.run(
-            [str(python), "-I", str(script), *args], cwd=cwd, env=env,
-            capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL,
+            cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired:
+        if image:
+            subprocess.run(["docker", "rm", "-f", name], capture_output=True, env=env)
         raise ModelRejected(f"pytm {' '.join(args)} timed out after {timeout} s") from None
     if result.returncode != 0:
         raise ModelRejected(f"pytm {' '.join(args)} exited {result.returncode}:\n{_tail(result.stderr or result.stdout)}")
     return result.stdout
+
+
+def sandbox_image(choice: str) -> str | None:
+    return tools.get_tool(tools.load_lock(), SANDBOX_TOOL).image if choice == "docker" else None
 
 
 def _strings(value) -> list[str]:
@@ -223,21 +261,23 @@ def element_names(model: dict) -> list[str]:
     return [x["name"] for key in ("boundaries", "elements", "flows") for x in model[key]]
 
 
-def check_and_run(source: str, out: Path, python: Path, timeout: int = TIMEOUT_SECONDS) -> dict:
+def check_and_run(source: str, out: Path, python: Path, timeout: int = TIMEOUT_SECONDS,
+                  image: str | None = None) -> dict:
     errors = validate_source(source)
     if errors:
         raise ModelRejected("AST validation failed:\n" + "\n".join(errors))
     tm_path = out / "tm.py"
     tm_path.write_text(source)
     print(f"AST validation passed for {tm_path}", flush=True)
-    print(f"running pytm --dfd and --json with {python} (timeout {timeout} s, no secrets in env)", flush=True)
-    dot = execute(python, HARNESS, [str(tm_path.resolve()), "--dfd"], timeout, out)
+    where = f"in container {image} with no network" if image else f"with {python}"
+    print(f"running pytm --dfd and --json {where} (timeout {timeout} s, no secrets in env)", flush=True)
+    dot = execute(python, HARNESS, ["tm.py", "--dfd"], timeout, out, image)
     if "digraph" not in dot:
         raise ModelRejected("pytm --dfd did not print a digraph")
     (out / "dfd.dot").write_text(dot)
     raw_path = out / "pytm.json"
     raw_path.unlink(missing_ok=True)
-    execute(python, HARNESS, [str(tm_path.resolve()), "--json", str(raw_path.resolve())], timeout, out)
+    execute(python, HARNESS, ["tm.py", "--json", "pytm.json"], timeout, out, image)
     try:
         raw = json.loads(raw_path.read_text())
     except (OSError, json.JSONDecodeError) as e:
@@ -261,7 +301,8 @@ def _ask(stage: str, inputs: list[Path], out_path: Path, workdir: Path | None) -
 
 
 def build(plan_path: Path, out: Path, previous: list[Path], python: Path,
-          workdir: Path | None = None, timeout: int = TIMEOUT_SECONDS) -> tuple[int, dict | None]:
+          workdir: Path | None = None, timeout: int = TIMEOUT_SECONDS,
+          image: str | None = None) -> tuple[int, dict | None]:
     if not python.is_file():
         raise RunnerError(f"pytm interpreter not found at {python}; run `python -m factory.tools install pytm`")
     out.mkdir(parents=True, exist_ok=True)
@@ -270,7 +311,7 @@ def build(plan_path: Path, out: Path, previous: list[Path], python: Path,
     if source is None:
         return code, None
     try:
-        return 0, check_and_run(source, out, python, timeout)
+        return 0, check_and_run(source, out, python, timeout, image)
     except ModelRejected as e:
         print(f"tm.py rejected, asking the model once more:\n{e}", file=sys.stderr)
         rejected, error = out / "tm.rejected.py", out / "error.txt"
@@ -280,7 +321,7 @@ def build(plan_path: Path, out: Path, previous: list[Path], python: Path,
     if source is None:
         return code, None
     try:
-        return 0, check_and_run(source, out, python, timeout)
+        return 0, check_and_run(source, out, python, timeout, image)
     except ModelRejected as e:
         (out / "tm.py").unlink(missing_ok=True)
         rejected.write_text(source)
@@ -296,10 +337,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default=Path("out/threat-model"), type=Path)
     parser.add_argument("--python", type=Path, default=tools.venv_python("pytm"))
     parser.add_argument("--timeout", type=int, default=TIMEOUT_SECONDS)
+    parser.add_argument("--sandbox", choices=("docker", "none"), default="docker",
+                        help="run pytm in the pinned no-network container (default) or directly")
     args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     try:
-        check_and_run(args.source.read_text(), args.out, args.python, args.timeout)
+        check_and_run(args.source.read_text(), args.out, args.python, args.timeout, sandbox_image(args.sandbox))
     except ModelRejected as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_REJECTED
