@@ -95,7 +95,7 @@ jobs:
         run: >-
           python -m factory.manifest create
           --config "$CONFIG_PATH" --mode "$MODE" --factory-ref "$FACTORY_REF" --issue "$ISSUE"
-          --stage plan --stage passthrough --stage hello-ai --stage secrets --stage sast-semgrep --stage sast-codeql --stage sast-eslint --stage deps-sbom --stage dast-web --stage gate
+          --stage plan --stage threat-model --stage passthrough --stage hello-ai --stage secrets --stage sast-semgrep --stage sast-codeql --stage sast-eslint --stage deps-sbom --stage dast-web --stage gate
           --out out/setup/run-manifest.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -175,6 +175,45 @@ jobs:
           REPO: ${{ github.repository }}
           ISSUE: ${{ inputs.issue }}
         run: gh issue comment "$ISSUE" --repo "$REPO" --body-file out/plan-comment/comment.md
+
+  threat-model:
+    needs: [setup, plan]
+    if: inputs.mode == 'spec' || inputs.mode == 'change'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - uses: ./.factory/.github/actions/setup-factory
+      - run: python -m factory.tools install claude-code pytm
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: plan
+          path: in/plan
+      # pytm runs AI-written Python: the stage checks it against an AST allowlist first
+      # and runs it with a timeout and an environment holding no tokens.
+      - name: threat model stage
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          FACTORY_MODEL_ADAPTER: claude_code
+          FACTORY_CLAUDE_TIMEOUT: "900"
+          FACTORY_CLAUDE_MAX_TURNS: "15"
+        run: python -m factory.stages.threat_model --plan in/plan/plan.json --previous security --out out/threat-model
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: threat-model
+          path: out/threat-model/
+          if-no-files-found: error
 
   passthrough:
     needs: setup
@@ -434,7 +473,7 @@ jobs:
           if-no-files-found: error
 
   gate:
-    needs: [authorize, setup, plan, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, deps-sbom, dast-web]
+    needs: [authorize, setup, plan, threat-model, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, deps-sbom, dast-web]
     # A refused spec or change run stops at authorize. In every other mode the gate always runs and fails closed.
     if: always() && (needs.authorize.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change'))
     runs-on: ubuntu-24.04

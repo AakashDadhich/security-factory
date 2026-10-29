@@ -15,6 +15,7 @@ class Stage:
 
 STAGES = (
     Stage("plan", modes=("spec", "change")),
+    Stage("threat-model", modes=("spec", "change")),
     Stage("secrets"),
     Stage("sast-semgrep"),
     Stage("sast-codeql", platforms=("web",)),

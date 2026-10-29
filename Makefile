@@ -1,4 +1,4 @@
-.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint deps-sbom dast-up dast-web dast-down rules plan
+.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint deps-sbom dast-up dast-web dast-down rules plan threat-model
 
 help:
 	@echo "make test         Run the factory test suite"
@@ -13,6 +13,7 @@ help:
 	@echo "make dast-web     Run the ZAP full scan (OpenAPI import and active scan) against the running app"
 	@echo "make dast-down    Remove the DAST containers and network"
 	@echo "make plan        Run the plan stage on ISSUE_FILE (JSON with title and body)"
+	@echo "make threat-model Build the pytm model and STRIDE threats from PLAN_FILE"
 	@echo "make rules       Render CLAUDE.md and AGENTS.md for PLATFORM and ASVS_LEVEL (default 2) into out/rules"
 
 test:
@@ -61,3 +62,8 @@ ISSUE_FILE ?= out/plan/issue.json
 
 plan:
 	python -m factory.stages.plan --issue-file $(ISSUE_FILE) --config .factory.yml --out out/plan
+
+PLAN_FILE ?= out/plan/plan.json
+
+threat-model:
+	python -m factory.stages.threat_model --plan $(PLAN_FILE) --previous security --out out/threat-model
