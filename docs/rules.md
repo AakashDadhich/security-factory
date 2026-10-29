@@ -27,3 +27,7 @@ A list, or an object with a `threats` list. Each threat has `id`, optional `titl
 ## Checklist
 
 `checklist` writes a JSON array of `{id, chapter, level, text}` for every requirement up to the level, for the second-agent review.
+
+## Threat input is untrusted
+
+`threats.json` is written by an AI stage from project text and ends up in an instruction file for a coding agent, so `load_threats` validates it. Ids must match `[A-Za-z0-9._-]{1,32}`, ASVS references must look like `V7.2.4`, titles and mitigation texts are flattened to one line, capped at 500 characters, and rejected if they start with Markdown structure (`#`, `-`, `>`, a code fence, a list number) or contain an HTML comment. A violation is an error, not a silent cleanup.

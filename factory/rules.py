@@ -18,6 +18,9 @@ TARGETS = {
 }
 CORE_ORDER = ("base", "secure-defaults")
 CLOSED_STATUSES = ("closed", "mitigated", "resolved", "accepted", "rejected")
+MAX_TEXT = 500
+ID_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,32}")
+ASVS_REF_PATTERN = re.compile(r"V[0-9]+(\.[0-9]+){0,2}")
 
 _FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n(.*)\Z", re.S)
 
@@ -73,6 +76,24 @@ def _demote(body: str) -> str:
     return "\n".join(out).strip("\n")
 
 
+def _text(value, what: str, source: str) -> str:
+    if not isinstance(value, str):
+        raise RulesError(f"{source}: {what} must be a string")
+    flat = re.sub(r"\s+", " ", value).strip()
+    if len(flat) > MAX_TEXT:
+        raise RulesError(f"{source}: {what} is longer than {MAX_TEXT} characters")
+    if not flat or re.match(r"[#>`|*+-]|\d+[.)]\s", flat) or "<!--" in flat or "```" in flat:
+        raise RulesError(f"{source}: {what} is empty or starts with Markdown structure: {flat[:40]!r}")
+    return flat
+
+
+def _ident(value, what: str, source: str) -> str:
+    text = str(value)
+    if not ID_PATTERN.fullmatch(text):
+        raise RulesError(f"{source}: {what} {text!r} must match {ID_PATTERN.pattern}")
+    return text
+
+
 def load_threats(path: str | Path) -> list[dict]:
     try:
         data = json.loads(Path(path).read_text())
@@ -85,20 +106,29 @@ def load_threats(path: str | Path) -> list[dict]:
     for t in threats:
         if not isinstance(t, dict) or "id" not in t:
             raise RulesError(f"{path}: every threat needs an 'id'")
+        tid = _ident(t["id"], "threat id", str(path))
         if str(t.get("status", "open")).lower() in CLOSED_STATUSES:
             continue
+        title = _text(t["title"], f"threat {tid} title", str(path)) if t.get("title") else ""
         mitigations = []
         for n, m in enumerate(t.get("mitigations", []), 1):
             if isinstance(m, str):
                 m = {"text": m}
             if "text" not in m:
-                raise RulesError(f"{path}: threat {t['id']} has a mitigation with no 'text'")
+                raise RulesError(f"{path}: threat {tid} has a mitigation with no 'text'")
             refs = m.get("asvs", m.get("asvs_refs", []))
+            for r in refs:
+                if not ASVS_REF_PATTERN.fullmatch(str(r)):
+                    raise RulesError(f"{path}: threat {tid} has an invalid ASVS reference {r!r}")
             mitigations.append(
-                {"id": str(m.get("id", f"{t['id']}-M{n}")), "text": m["text"], "asvs": sorted(str(r) for r in refs)}
+                {
+                    "id": _ident(m.get("id", f"{tid}-M{n}"), "mitigation id", str(path)),
+                    "text": _text(m["text"], f"threat {tid} mitigation text", str(path)),
+                    "asvs": sorted(str(r) for r in refs),
+                }
             )
         if mitigations:
-            result.append({"id": str(t["id"]), "title": t.get("title", ""), "mitigations": mitigations})
+            result.append({"id": tid, "title": title, "mitigations": mitigations})
     return sorted(result, key=lambda t: t["id"])
 
 

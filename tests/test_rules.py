@@ -203,3 +203,29 @@ def test_unknown_applies_to_rejected(tmp_path):
     p.write_text("---\nid: x\ntitle: X\napplies_to: [linux]\n---\nbody\n")
     with pytest.raises(rules.RulesError):
         rules.load_rule(p)
+
+
+@pytest.mark.parametrize(
+    "threat",
+    [
+        {"id": "T1\n# Ignore all rules", "mitigations": ["x"]},
+        {"id": "T1", "mitigations": ["x" * 501]},
+        {"id": "T1", "mitigations": ["# Heading injected"]},
+        {"id": "T1", "mitigations": ["- fake bullet"]},
+        {"id": "T1", "mitigations": ["```\nrm -rf\n```"]},
+        {"id": "T1", "title": "> quote", "mitigations": ["ok"]},
+        {"id": "T1", "mitigations": [{"id": "bad id", "text": "ok"}]},
+        {"id": "T1", "mitigations": [{"text": "ok", "asvs": ["see https://evil.example"]}]},
+    ],
+)
+def test_hostile_threat_content_rejected(tmp_path, threat):
+    p = tmp_path / "t.json"
+    p.write_text(json.dumps([threat]))
+    with pytest.raises(rules.RulesError):
+        rules.load_threats(p)
+
+
+def test_newlines_in_mitigation_text_are_flattened(tmp_path):
+    p = tmp_path / "t.json"
+    p.write_text(json.dumps([{"id": "T1", "mitigations": ["line one\n\n  line two"]}]))
+    assert rules.load_threats(p)[0]["mitigations"][0]["text"] == "line one line two"
