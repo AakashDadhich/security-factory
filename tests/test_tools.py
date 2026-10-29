@@ -417,7 +417,11 @@ def test_venv_entry_parses(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "requirements, extra, message",
     [
-        (f"v==1.0 {HASH}\ndep==2\n", "", "without a sha256 hash: dep==2"),
+        (f"v==1.0 {HASH}\ndep==2\n", "", "must be 'name==version --hash"),
+        (f"v==1.0 {HASH}\n-r other.txt\n", "", "must be 'name==version --hash"),
+        (f"v==1.0 {HASH} --index-url https://evil.example\n", "", "must be 'name==version --hash"),
+        (f"v==1.0 {HASH} # comment\n", "", "must be 'name==version --hash"),
+        (f"v==1.0 --hash=sha256:{'E' * 64}\n", "", "must be 'name==version --hash"),
         (f"v==1.1 {HASH}\n", "", "does not pin v==1.0"),
         (f"v==1.0 {HASH}\n", 'package = "other"\n', "does not pin other==1.0"),
     ],
@@ -453,3 +457,10 @@ def test_install_dispatches_venv(monkeypatch, tmp_path):
     monkeypatch.setattr(tools, "install_venv", lambda tool: seen.append(tool.name) or tmp_path / "v" / "bin" / "python")
     tools.install(Tool("v", "1", "venv", requirements="r.txt"), "")
     assert seen == ["v"]
+
+
+@pytest.mark.parametrize("name", ["..", "../x", "a/b", "Upper", ".hidden"])
+def test_lock_rejects_unsafe_tool_names(tmp_path, name):
+    lock = write_lock(tmp_path, f'[[tool]]\nname = "{name}"\nversion = "1"\nkind = "pipx"\n')
+    with pytest.raises(ToolError, match="tool names must be"):
+        tools.load_lock(lock)

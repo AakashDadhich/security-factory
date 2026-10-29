@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,8 @@ GIT_DIR = Path.home() / ".factory"
 VENV_DIR = Path.home() / ".factory" / "venvs"
 ARCHIVES = ("tar.gz", "zip", "none")
 PLATFORM_FIELDS = ("url", "sha256", "archive", "bin")
+NAME_RE = re.compile(r"[a-z0-9][a-z0-9._-]*")
+REQUIREMENT_RE = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*==[A-Za-z0-9.+!-]+)( --hash=sha256:[0-9a-f]{64})+")
 
 
 class ToolError(Exception):
@@ -45,6 +48,8 @@ def _validate(entry: dict) -> Tool:
     name = entry.get("name")
     if not name:
         raise ToolError("lock entry is missing 'name'")
+    if not NAME_RE.fullmatch(name):
+        raise ToolError(f"{name!r}: tool names must be lowercase letters, digits, '.', '_' or '-'")
     for key in ("version", "kind"):
         if not entry.get(key):
             raise ToolError(f"{name}: lock entry is missing '{key}'")
@@ -101,12 +106,16 @@ def _check_requirements(name: str, package: str, version: str, requirements: str
     path = FACTORY_ROOT / rel
     if not path.is_file():
         raise ToolError(f"{name}: requirements file {requirements} not found")
-    lines = [line.strip() for line in path.read_text().splitlines()]
-    lines = [line for line in lines if line and not line.startswith("#")]
-    unhashed = [line.split()[0] for line in lines if "--hash=sha256:" not in line]
-    if unhashed:
-        raise ToolError(f"{name}: requirements without a sha256 hash: {', '.join(unhashed)}")
-    if not any(line.split()[0] == f"{package}=={version}" for line in lines):
+    pins = []
+    for line in path.read_text().splitlines():
+        line = " ".join(line.split())
+        if not line or line.startswith("#"):
+            continue
+        match = REQUIREMENT_RE.fullmatch(line)
+        if not match:
+            raise ToolError(f"{name}: requirement line must be 'name==version --hash=sha256:<hex>' only: {line}")
+        pins.append(match.group(1))
+    if f"{package}=={version}" not in pins:
         raise ToolError(f"{name}: {requirements} does not pin {package}=={version}")
 
 
