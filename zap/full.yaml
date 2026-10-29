@@ -1,0 +1,40 @@
+env:
+  contexts:
+    - name: app
+      urls:
+        - "{{TARGET}}"
+      includePaths:
+        - "{{TARGET}}.*"
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+jobs:
+{{OPENAPI_JOB}}
+  - type: spider
+    parameters:
+      context: app
+      maxDuration: 2
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+  - type: activeScan
+    parameters:
+      context: app
+      maxRuleDurationInMins: 2
+      maxScanDurationInMins: 15
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+  - type: report
+    parameters:
+      template: traditional-json
+      reportDir: /zap/wrk
+      reportFile: zap-report
+      reportTitle: Factory ZAP full scan
+  - type: report
+    parameters:
+      template: traditional-html
+      reportDir: /zap/wrk
+      reportFile: zap-report
+      reportTitle: Factory ZAP full scan

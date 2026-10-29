@@ -7,13 +7,14 @@ from pathlib import Path
 
 from factory import config as factory_config
 from factory import findings, tools
-from factory.dast.harness import APP_ALIAS, NETWORK
+from factory.dast import plan as dast_plan
+from factory.dast.harness import NETWORK
+from factory.dast.plan import PLANS, PlanError
 from factory.findings import FindingsError
 
 STAGE = "dast-web"
 TOOL = "zap"
-PLAN_DIR = Path(__file__).resolve().parent.parent.parent / "zap"
-PLANS = ("baseline",)
+PLAN_DIR = dast_plan.PLAN_DIR
 RISK = {"3": "high", "2": "medium", "1": "low", "0": "info"}
 REPORT_NAME = "zap-report"
 
@@ -22,26 +23,18 @@ class StageError(Exception):
     pass
 
 
-def target_url(port: int) -> str:
-    return f"http://{APP_ALIAS}:{port}"
-
-
-def render_plan(plan: str, port: int, plan_dir: Path = PLAN_DIR) -> str:
-    if plan not in PLANS:
-        raise StageError(f"unknown plan {plan!r}; choose from {', '.join(PLANS)}")
-    return (plan_dir / f"{plan}.yaml").read_text().replace("{{TARGET}}", target_url(port))
-
-
-def zap_cmd(image: str, workdir: Path, plan_file: str) -> list[str]:
-    return [
+def zap_cmd(image: str, workdir: Path, plan_file: str, spec: Path | None = None) -> list[str]:
+    cmd = [
         "docker", "run", "--rm",
         "--network", NETWORK,
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "-v", f"{workdir}:/zap/wrk:rw",
-        image,
-        "zap.sh", "-cmd", "-silent", "-autorun", f"/zap/wrk/{plan_file}",
     ]
+    if spec is not None:
+        cmd += ["-v", f"{spec}:{dast_plan.SPEC_MOUNT}:ro"]
+    cmd += [image, "zap.sh", "-cmd", "-silent", "-autorun", f"/zap/wrk/{plan_file}"]
+    return cmd
 
 
 def _text(value) -> str:
@@ -82,7 +75,7 @@ def convert(report: dict) -> list[dict]:
     return list(by_fingerprint.values())
 
 
-def run(plan: str, out: Path, config_path: Path, image: str, runner=None) -> list[dict]:
+def run(plan: str, out: Path, config_path: Path, image: str, runner=None, project_dir: Path = Path(".")) -> list[dict]:
     runner = runner or subprocess.run
     cfg = factory_config.load(config_path)
     if cfg["platform"] != "web":
@@ -92,8 +85,14 @@ def run(plan: str, out: Path, config_path: Path, image: str, runner=None) -> lis
     work.mkdir(exist_ok=True)
     work.chmod(0o777)
     plan_file = f"{plan}.yaml"
-    (work / plan_file).write_text(render_plan(plan, cfg["web"]["port"]))
-    cmd = zap_cmd(image, work.resolve(), plan_file)
+    openapi = cfg["web"].get("openapi") if plan == "full" else None
+    try:
+        spec = dast_plan.resolve_spec(openapi, project_dir) if openapi else None
+        (work / plan_file).write_text(dast_plan.render(plan, cfg["web"]["port"], openapi=spec is not None, plan_dir=PLAN_DIR))
+        cmd = zap_cmd(image, work.resolve(), plan_file, spec)
+        dast_plan.assert_safe_command(cmd)
+    except PlanError as e:
+        raise StageError(str(e)) from e
     print("+ " + " ".join(cmd), flush=True)
     proc = runner(cmd)
     report = work / f"{REPORT_NAME}.json"
@@ -115,7 +114,7 @@ def run(plan: str, out: Path, config_path: Path, image: str, runner=None) -> lis
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m factory.stages.dast_web", description="Run a ZAP automation plan against the DAST harness app")
-    parser.add_argument("--plan", default="baseline", choices=PLANS)
+    parser.add_argument("--plan", default="full", choices=PLANS)
     parser.add_argument("--out", default="out/dast-web")
     parser.add_argument("--config", default=".factory.yml")
     args = parser.parse_args(argv)

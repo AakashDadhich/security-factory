@@ -7,6 +7,7 @@ import pytest
 
 from factory import findings, stage_matrix, tools
 from factory.dast import harness
+from factory.dast import plan as dast_plan
 from factory.findings import FindingsError
 from factory.stages import dast_web as stage
 
@@ -75,20 +76,20 @@ def test_non_zap_report_is_rejected():
 
 
 def test_plan_targets_the_app_alias_and_port():
-    plan = stage.render_plan("baseline", 8080)
+    plan = dast_plan.render("baseline", 8080)
     assert "http://app:8080" in plan
     assert "{{TARGET}}" not in plan
 
 
 def test_unknown_plan_is_rejected():
-    with pytest.raises(stage.StageError):
-        stage.render_plan("full", 3000)
+    with pytest.raises(dast_plan.PlanError):
+        dast_plan.render("nope", 3000)
 
 
 def test_baseline_plan_has_expected_jobs():
     import yaml
 
-    plan = yaml.safe_load(stage.render_plan("baseline", 3000))
+    plan = yaml.safe_load(dast_plan.render("baseline", 3000))
     types = [j["type"] for j in plan["jobs"]]
     assert types == ["spider", "passiveScan-wait", "report", "report"]
     assert plan["jobs"][0]["parameters"]["maxDuration"] == 2
