@@ -1,0 +1,82 @@
+{
+  "threats": [
+    {
+      "previous_id": null,
+      "category": "spoofing",
+      "element": "Sign-in request",
+      "title": "Credential stuffing against sign-in",
+      "description": "An attacker replays leaked email and password pairs against the sign-in endpoint.",
+      "likelihood": "high",
+      "impact": "high",
+      "mitigations": [
+        {
+          "text": "Rate limit sign-in attempts per account and per IP.",
+          "asvs_refs": [
+            "V6.3.1"
+          ]
+        },
+        {
+          "text": "Check new passwords against breached password lists.",
+          "asvs_refs": [
+            "V6.2.12"
+          ]
+        }
+      ],
+      "status": "open"
+    },
+    {
+      "previous_id": null,
+      "category": "tampering",
+      "element": "Create note request",
+      "title": "Note created for another user",
+      "description": "A user changes an owner field in the request body to write into another user's notes.",
+      "likelihood": "medium",
+      "impact": "high",
+      "mitigations": [
+        {
+          "text": "Take the note owner from the session, never from the request.",
+          "asvs_refs": [
+            "V8.2.2"
+          ]
+        }
+      ],
+      "status": "open"
+    },
+    {
+      "previous_id": null,
+      "category": "information-disclosure",
+      "element": "Notes response",
+      "title": "Notes of another user returned",
+      "description": "Changing the note id in the URL returns a note owned by someone else.",
+      "likelihood": "high",
+      "impact": "high",
+      "mitigations": [
+        {
+          "text": "Look up notes by id and owner together.",
+          "asvs_refs": [
+            "V8.2.2"
+          ]
+        }
+      ],
+      "status": "open"
+    },
+    {
+      "previous_id": null,
+      "category": "repudiation",
+      "element": "Web app",
+      "title": "Note deletion not attributable",
+      "description": "Deletes are not logged, so a user can deny deleting shared evidence.",
+      "likelihood": "low",
+      "impact": "medium",
+      "mitigations": [
+        {
+          "text": "Log note create, edit and delete with the user id and time.",
+          "asvs_refs": [
+            "V16.3.2"
+          ]
+        }
+      ],
+      "status": "open"
+    }
+  ]
+}
