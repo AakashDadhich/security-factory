@@ -38,6 +38,23 @@
         }
       }
     },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fail_on_extra": {
+          "description": "Severities that also fail the gate, on top of the factory policy. Can only add levels.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["medium", "low", "info"]}
+        }
+      }
+    },
+    "suppressions": {
+      "description": "Time-limited waivers. Entries are checked by the gate, which ignores and reports bad ones.",
+      "type": "array",
+      "items": {"type": "object"}
+    },
     "apple": {
       "type": "object",
       "additionalProperties": false,
