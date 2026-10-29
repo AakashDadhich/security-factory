@@ -25,7 +25,18 @@ FORBIDDEN_NAMES = frozenset({
     "getattr", "setattr", "delattr", "globals", "locals", "vars", "input",
     "breakpoint", "help", "memoryview", "builtins", "importlib", "__builtins__",
 })
-FORBIDDEN_ATTRS = frozenset({"threatsFile", "report", "load", "loads"})
+# Threat and Finding are left out on purpose: pytm eval()s a Threat's condition string.
+PYTM_EXPORTS = frozenset({
+    "TM", "Boundary", "Actor", "Server", "Process", "SetOfProcesses", "Lambda", "Datastore", "DatastoreType",
+    "Dataflow", "Data", "Classification", "Lifetime", "TLSVersion", "ExternalEntity", "Element", "Assumption",
+    "Controls", "Action", "Agent", "LLM",
+})
+PYTM_MODULES = frozenset({
+    "actor", "asset", "base", "boundary", "dataflow", "datastore", "element", "enums", "finding", "flows",
+    "json", "pytm", "report_util", "template_engine", "threat", "threatlib", "tm",
+})
+FORBIDDEN_KEYWORDS = frozenset({"threatsFile"})
+FORBIDDEN_ATTRS = FORBIDDEN_KEYWORDS | {"report", "load", "loads", "modules", "sys"} | FORBIDDEN_NAMES | PYTM_MODULES
 REQUIRED_CALLS = ("TM", "Boundary", "Actor", "Datastore", "Dataflow")
 PROCESS_CALLS = ("Server", "Process", "SetOfProcesses", "Lambda")
 ENV_KEEP = ("PATH", "LANG", "LC_ALL")
@@ -54,11 +65,12 @@ def validate_source(source: str) -> list[str]:
         return [f"line {e.lineno}: syntax error: {e.msg}"]
     errors = []
     calls = set()
-    sys_ok = set()
+    module_ok = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "sys":
-            if node.attr in SYS_ATTRS:
-                sys_ok.add(id(node.value))
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            allowed = {"sys": SYS_ATTRS, "pytm": PYTM_EXPORTS}.get(node.value.id, frozenset())
+            if node.attr in allowed:
+                module_ok.add(id(node.value))
     for node in ast.walk(tree):
         where = f"line {getattr(node, 'lineno', '?')}"
         if isinstance(node, ast.Import):
@@ -71,21 +83,26 @@ def validate_source(source: str) -> list[str]:
             if node.level or node.module != "pytm":
                 errors.append(f"{where}: import from '{node.module}' is not allowed, only pytm")
             for alias in node.names:
-                if alias.name == "*" or alias.name in FORBIDDEN_ATTRS:
-                    errors.append(f"{where}: 'from pytm import {alias.name}' is not allowed")
+                if alias.name not in PYTM_EXPORTS:
+                    errors.append(f"{where}: 'from pytm import {alias.name}' is not allowed, "
+                                  f"use only {', '.join(sorted(PYTM_EXPORTS))}")
         elif isinstance(node, ast.Name):
             if node.id in FORBIDDEN_NAMES:
                 errors.append(f"{where}: '{node.id}' is not allowed")
             elif node.id.startswith("__") and node.id != "__name__":
                 errors.append(f"{where}: dunder name '{node.id}' is not allowed")
-            elif node.id == "sys" and id(node) not in sys_ok:
+            elif node.id == "sys" and id(node) not in module_ok:
                 errors.append(f"{where}: only sys.argv and sys.exit may be used")
+            elif node.id == "pytm" and id(node) not in module_ok:
+                errors.append(f"{where}: pytm may only be used as pytm.<class>, for example pytm.Server")
         elif isinstance(node, ast.Attribute):
             if node.attr.startswith("__"):
                 errors.append(f"{where}: dunder attribute '{node.attr}' is not allowed")
+            elif node.attr.startswith("_"):
+                errors.append(f"{where}: private attribute '{node.attr}' is not allowed")
             elif node.attr in FORBIDDEN_ATTRS:
                 errors.append(f"{where}: attribute '{node.attr}' is not allowed")
-        elif isinstance(node, ast.keyword) and node.arg in FORBIDDEN_ATTRS:
+        elif isinstance(node, ast.keyword) and node.arg in FORBIDDEN_KEYWORDS:
             errors.append(f"{where}: keyword '{node.arg}' is not allowed")
         elif isinstance(node, ast.Call):
             name = _called_name(node.func)
