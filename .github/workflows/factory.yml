@@ -121,6 +121,36 @@ jobs:
           path: out/setup/
           if-no-files-found: error
 
+  ai-eligible:
+    needs: setup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      run_ai: ${{ steps.decide.outputs.run_ai }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - name: decide whether the AI stages run
+        id: decide
+        env:
+          PYTHONPATH: .factory
+          MODE: ${{ inputs.mode }}
+          EVENT: ${{ github.event_name }}
+          HEAD_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          HAS_SECRET: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: >-
+          python3 -m factory.eligibility --mode "$MODE" --event "$EVENT" --head-fork "$HEAD_FORK"
+          --ref "$REF" --default-branch "$DEFAULT_BRANCH" --has-secret "$HAS_SECRET" --github-output "$GITHUB_OUTPUT"
+
   plan:
     needs: [authorize, setup]
     if: inputs.mode == 'spec' || inputs.mode == 'change'
@@ -195,8 +225,8 @@ jobs:
         run: gh issue comment "$ISSUE" --repo "$REPO" --body-file out/plan-comment/comment.md
 
   threat-model:
-    needs: [setup, plan]
-    if: inputs.mode == 'spec' || inputs.mode == 'change'
+    needs: [setup, plan, ai-eligible]
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (((inputs.mode == 'spec' || inputs.mode == 'change') && needs.plan.result == 'success') || (inputs.mode == 'check' && needs.ai-eligible.outputs.run_ai == 'true')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -204,6 +234,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -214,9 +246,22 @@ jobs:
       - uses: ./.factory/.github/actions/setup-factory
       - run: python -m factory.tools install claude-code pytm pytm-sandbox
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: inputs.mode != 'check'
         with:
           name: plan
           path: in/plan
+      # Check mode has no plan: the model is updated from security/ (or bootstrapped from the code) and the diff.
+      - name: diff for check mode
+        if: inputs.mode == 'check'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          base="${PR_BASE:-$PUSH_BEFORE}"
+          case "$base" in ""|0000000000000000000000000000000000000000) base=$(git hash-object -t tree /dev/null) ;; esac
+          mkdir -p in/diff
+          git diff --no-color "$base" HEAD -- . ':(exclude)security' | head -c 200000 > in/diff/diff.patch
       # pytm runs AI-written Python: the stage checks it against an AST allowlist first, then runs it
       # in a no-network, read-only container so it cannot reach this job's processes or the token.
       - name: threat model stage
@@ -225,7 +270,13 @@ jobs:
           FACTORY_MODEL_ADAPTER: claude_code
           FACTORY_CLAUDE_TIMEOUT: "900"
           FACTORY_CLAUDE_MAX_TURNS: "15"
-        run: python -m factory.stages.threat_model --plan in/plan/plan.json --previous security --out out/threat-model
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$MODE" = check ]; then
+            python -m factory.stages.threat_model --diff in/diff/diff.patch --previous security --out out/threat-model
+          else
+            python -m factory.stages.threat_model --plan in/plan/plan.json --previous security --out out/threat-model
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -398,8 +449,8 @@ jobs:
           if-no-files-found: error
 
   review:
-    needs: [setup, codegen-commit]
-    if: ${{ !cancelled() && needs.setup.result == 'success' && (((inputs.mode == 'spec' || inputs.mode == 'change' || inputs.mode == 'fix') && needs.codegen-commit.result == 'success') || (inputs.mode == 'check' && ((github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false) || (github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000')))) }}
+    needs: [setup, codegen-commit, ai-eligible]
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (((inputs.mode == 'spec' || inputs.mode == 'change' || inputs.mode == 'fix') && needs.codegen-commit.result == 'success') || (inputs.mode == 'check' && needs.ai-eligible.outputs.run_ai == 'true')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -435,6 +486,7 @@ jobs:
             spec|change|fix) base="origin/$DEFAULT_BRANCH" ;;
             *) base="${PR_BASE:-$PUSH_BEFORE}" ;;
           esac
+          case "$base" in ""|0000000000000000000000000000000000000000) base=$(git hash-object -t tree /dev/null) ;; esac
           python -m factory.stages.review --base "$base" --head HEAD --asvs-level "$ASVS_LEVEL" --out out/review
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -710,7 +762,7 @@ jobs:
           if-no-files-found: error
 
   gate:
-    needs: [authorize, setup, plan, threat-model, codegen-ai, codegen-commit, review, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, deps-sbom, dast-web]
+    needs: [authorize, setup, ai-eligible, plan, threat-model, codegen-ai, codegen-commit, review, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, deps-sbom, dast-web]
     # A refused spec, change or fix run stops at authorize. In every other mode the gate always runs and fails closed.
     if: always() && (needs.authorize.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix'))
     runs-on: ubuntu-24.04
@@ -756,7 +808,7 @@ jobs:
 
   record:
     needs: [gate]
-    if: always() && needs.gate.result != 'skipped' && github.event.pull_request.head.repo.fork != true
+    if: always() && needs.gate.result != 'skipped' && github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -778,6 +830,16 @@ jobs:
         with:
           name: deps-sbom
           path: in/deps-sbom
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: threat-model
+          path: in/threat-model
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: review
+          path: in/review
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: setup

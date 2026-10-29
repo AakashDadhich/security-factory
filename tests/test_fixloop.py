@@ -293,7 +293,7 @@ def test_fix_mode_workflow_wiring():
     assert "factory-issue-{0}" in group and "'fix'" in group and "'spec'" in group and "'change'" in group
     j = jobs()
     assert j["plan"]["if"] == "inputs.mode == 'spec' || inputs.mode == 'change'"
-    assert j["threat-model"]["if"] == "inputs.mode == 'spec' || inputs.mode == 'change'"
+    assert "inputs.mode == 'fix'" not in j["threat-model"]["if"] and "needs.plan.result == 'success'" in j["threat-model"]["if"]
     assert j["fix-input"]["permissions"] == {"contents": "read", "actions": "read"}
     commit_if = j["codegen-commit"]["if"]
     assert "inputs.mode == 'fix'" in commit_if and "!cancelled()" in commit_if and "needs.codegen-ai.result == 'success'" in commit_if

@@ -336,9 +336,10 @@ def test_review_job_reviews_the_pushed_commit_against_the_default_branch():
     assert 'origin/$DEFAULT_BRANCH' in run["run"] and "PR_BASE" in run["env"] and "PUSH_BEFORE" in run["env"]
 
 
-def test_review_job_skips_fork_pull_requests():
+def test_review_job_in_check_mode_follows_the_ai_eligible_decision():
     condition = jobs()["review"]["if"]
-    assert "head.repo.fork == false" in condition
+    assert "needs.ai-eligible.outputs.run_ai == 'true'" in condition
+    assert "ai-eligible" in jobs()["review"]["needs"]
     assert "needs.setup.result == 'success'" in condition
 
 
@@ -347,6 +348,6 @@ def test_manifest_lists_the_review_stage():
     assert "--stage review" in " ".join(run.split())
 
 
-@pytest.mark.parametrize(("mode", "expected"), [("spec", True), ("change", True), ("fix", True), ("check", False)])
+@pytest.mark.parametrize(("mode", "expected"), [("spec", True), ("change", True), ("fix", True), ("check", True)])
 def test_matrix_expects_review_by_mode(mode, expected):
     assert ("review" in [s.name for s in stage_matrix.expected("web", mode)]) is expected
