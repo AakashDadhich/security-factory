@@ -41,7 +41,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 10 | deps-and-sbom | done |
 | 11 | gate-and-report | done |
 | 12 | dast-zap-baseline | done |
-| 13 | dast-zap-active-openapi | in progress |
+| 13 | dast-zap-active-openapi | done |
 | 14 | project-record | todo |
 | 15 | security-rules-and-renderer | todo |
 | 16 | clarify-plan-stage | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 12 are done. Next in order is chunk 13 (dast-zap-active-openapi); 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 13 are done. Next in order is chunk 14 (project-record); 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -138,16 +138,16 @@ Chunks 00 to 12 are done. Next in order is chunk 13 (dast-zap-active-openapi); 1
 - DAST (chunk 12): `python -m factory.dast.harness up|down [--config .factory.yml] [--run-id N] [--context .]` and `python -m factory.stages.dast_web --plan baseline --out out/dast-web [--config]`. Make targets `dast-up`, `dast-web`, `dast-down`. Lock entries `zap` (`ghcr.io/zaproxy/zaproxy` stable index digest `sha256:030d3df5...`, built 2026-10-26, version label `stable-2026-10-26`) and `curl` (`curlimages/curl` 8.23.0). Network `factory-dast` (`--internal`), app container `factory-app-<run_id>` with alias `app`, image `factory-app:<run_id>`. Plans live in `zap/<plan>.yaml` with `{{TARGET}}` templated to `http://app:<port>`; ZAP runs `zap.sh -cmd -silent -autorun /zap/wrk/<plan>.yaml` with a 777 work dir mounted at `/zap/wrk`, and the stage copies `zap-report.json` and `.html` to `out/dast-web/`. `dast_web.PLANS` is the allowlist, so chunk 13 adds its plan names there. Findings: one per alert per URL path and method (query ignored), tool `zap`, stage `dast-web`. `dast-web` is a required web-only gate stage.
 - The clean test app gives 0 ZAP alerts (spider only finds `/` and `/health`; helmet headers present). Chunk 13 will exercise more with the OpenAPI import.
 
-- DAST full plan (chunk 13): `python -m factory.stages.dast_web --out out/dast-web` now defaults to `--plan full`; `baseline` is kept. `factory/dast/plan.py` renders `zap/full.yaml` (placeholder line `{{OPENAPI_JOB}}` is replaced by the `openapi` job or removed) and holds the guards (`assert_safe_target`: only `http://app:<port>`; `assert_safe_command`: needs `--network factory-dast`). The spec path from `web.openapi` is resolved inside the project dir and mounted read-only at `/zap/spec/openapi.yaml`. `PLANS` now lives in `factory/dast/plan.py`. On the clean test app the full scan takes about 2 minutes (activeScan 1m10s) and gives 0 alerts. ZAP's traditional-json report only lists URLs that have alerts, so a clean app's report has no per-URL entries.
+- DAST full plan (chunk 13): `python -m factory.stages.dast_web --out out/dast-web` now defaults to `--plan full`; `baseline` is kept. `factory/dast/plan.py` renders `zap/full.yaml` (placeholder line `{{OPENAPI_JOB}}` is replaced by the `openapi` job or removed) and holds the guards (`assert_safe_target`: only `http://app:<port>`; `assert_safe_command`: needs `--network factory-dast`). The spec path from `web.openapi` is resolved inside the project dir and mounted read-only at `/zap/spec/openapi.yaml`. `PLANS` now lives in `factory/dast/plan.py`. On the clean test app the full scan takes about 2 minutes (activeScan 1m10s) and gives 0 alerts. ZAP's traditional-json report only lists URLs that have alerts, so a clean app's report has no per-URL entries. The plan therefore ends with an `export` job (Import/Export add-on, `type: yaml`, `source: sitestree`) writing `sites-tree.yaml`; the stage turns it into `out/dast-web/sites.json` (`{"paths": [...]}`). Fixture: `tests/fixtures/zap/sites-tree.yaml` (real ZAP output).
 
 ## Session log
 
-### 2026-10-29, chunk 13 (dast-zap-active-openapi), IN PROGRESS, one check open
-Added `zap/full.yaml`, `factory/dast/plan.py`, `tests/test_dast_plan.py`, `tests/fixtures/zap/report-active.json`, stage default `full`, workflow and Makefile updates. Master session pushed the commits.
-- selftest run `40829159507`: all 6 jobs `success`; `387 passed, 2 skipped`, including the guard tests. Pass.
-- `factory-test-web` run `40829233694` (workflow_dispatch): all 10 jobs `success`, `dast-web` took about 2 minutes (under 20). Log: `Job openapi added 2 URLs`, `Job activeScan finished, time taken: 00:01:10`. Pass.
+### 2026-10-29, chunk 13 (dast-zap-active-openapi)
+Added `zap/full.yaml`, `factory/dast/plan.py`, `tests/test_dast_plan.py`, fixtures, stage default `full`, workflow and Makefile updates, plus (owner chose this for the URL check) an `export` job writing the sites tree. Master session pushed the commits.
+- selftest run `40830717738`: all 6 jobs `success`, including the guard tests and the sites tree tests. Pass.
+- `factory-test-web` run `40830749261` (workflow_dispatch): all jobs `success`; `dast-web` ran 06:41:56 to 06:44:14 (about 2 min 20 s, under 20). Log: `Job openapi added 2 URLs`, `Job activeScan finished, time taken: 00:01:12`. Pass.
+- Artifact `dast-web` has `sites.json` with paths `/`, `/api`, `/api/greeting`, `/health`, `/robots.txt`, `/sitemap.xml`, so both `/health` and `/api/greeting` are present. Pass (read from the exported sites tree, because ZAP's JSON report lists only URLs with alerts; owner chose this).
 - Gate on the clean app: `success`. Pass.
-- ZAP JSON report contains URLs for `/health` and `/api/greeting`: FAIL as written. The report has only the site `http://app:3000` and no alerts, so no per-URL entries. Awaiting owner decision.
 
 ### 2026-10-29, chunk 12 (dast-zap-baseline)
 Added the `zap` and `curl` container pins, `factory/dast/harness.py`, `zap/baseline.yaml`, `factory/stages/dast_web.py`, `tests/test_dast_web.py` with a fixture, the `dast-web` job (gate needs it) and the stage matrix entry. Master session pushed the commits.
