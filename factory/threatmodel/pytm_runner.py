@@ -18,8 +18,8 @@ EXIT_REJECTED = 2
 TIMEOUT_SECONDS = 120
 OUTPUT_CAP = 4000
 
-ALLOWED_IMPORTS = frozenset({"pytm", "sys"})
-SYS_ATTRS = frozenset({"argv", "exit"})
+# sys is left out: a model that edits sys.argv could make pytm read or write any file.
+ALLOWED_IMPORTS = frozenset({"pytm"})
 FORBIDDEN_NAMES = frozenset({
     "open", "exec", "eval", "compile", "__import__", "subprocess", "os",
     "getattr", "setattr", "delattr", "globals", "locals", "vars", "input",
@@ -36,7 +36,7 @@ PYTM_MODULES = frozenset({
     "json", "pytm", "report_util", "template_engine", "threat", "threatlib", "tm",
 })
 FORBIDDEN_KEYWORDS = frozenset({"threatsFile"})
-FORBIDDEN_ATTRS = FORBIDDEN_KEYWORDS | {"report", "load", "loads", "modules", "sys"} | FORBIDDEN_NAMES | PYTM_MODULES
+FORBIDDEN_ATTRS = FORBIDDEN_KEYWORDS | {"report", "load", "loads", "modules", "sys", "argv"} | FORBIDDEN_NAMES | PYTM_MODULES
 REQUIRED_CALLS = ("TM", "Boundary", "Actor", "Datastore", "Dataflow")
 PROCESS_CALLS = ("Server", "Process", "SetOfProcesses", "Lambda")
 ENV_KEEP = ("PATH", "LANG", "LC_ALL")
@@ -68,7 +68,7 @@ def validate_source(source: str) -> list[str]:
     module_ok = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            allowed = {"sys": SYS_ATTRS, "pytm": PYTM_EXPORTS}.get(node.value.id, frozenset())
+            allowed = PYTM_EXPORTS if node.value.id == "pytm" else frozenset()
             if node.attr in allowed:
                 module_ok.add(id(node.value))
     for node in ast.walk(tree):
@@ -76,7 +76,7 @@ def validate_source(source: str) -> list[str]:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name not in ALLOWED_IMPORTS:
-                    errors.append(f"{where}: import of '{alias.name}' is not allowed, only pytm and sys")
+                    errors.append(f"{where}: import of '{alias.name}' is not allowed, only pytm")
                 elif alias.asname:
                     errors.append(f"{where}: 'import {alias.name} as {alias.asname}' is not allowed")
         elif isinstance(node, ast.ImportFrom):
@@ -91,8 +91,6 @@ def validate_source(source: str) -> list[str]:
                 errors.append(f"{where}: '{node.id}' is not allowed")
             elif node.id.startswith("__") and node.id != "__name__":
                 errors.append(f"{where}: dunder name '{node.id}' is not allowed")
-            elif node.id == "sys" and id(node) not in module_ok:
-                errors.append(f"{where}: only sys.argv and sys.exit may be used")
             elif node.id == "pytm" and id(node) not in module_ok:
                 errors.append(f"{where}: pytm may only be used as pytm.<class>, for example pytm.Server")
         elif isinstance(node, ast.Attribute):

@@ -77,7 +77,7 @@ def test_import_os_is_rejected():
     ("import subprocess", "import of 'subprocess'"),
     ("from os import path", "import from 'os'"),
     ("from . import x", "import from 'None'"),
-    ("import sys as s", "'import sys as s'"),
+    ("import pytm as p", "'import pytm as p'"),
     ("from pytm import *", "'from pytm import *'"),
     ("from pytm import load", "'from pytm import load'"),
     ("from pytm import tm as m\nm.os.system('id')", "'from pytm import tm'"),
@@ -94,8 +94,8 @@ def test_import_os_is_rejected():
     ("getattr(tm, 'x')", "'getattr' is not allowed"),
     ("x = ().__class__.__base__", "dunder attribute '__class__'"),
     ("__builtins__", "'__builtins__' is not allowed"),
-    ("import sys\nsys.modules['os']", "only sys.argv and sys.exit"),
-    ("import sys\nalias = sys", "only sys.argv and sys.exit"),
+    ("import sys\nsys.argv += ['--report', '/etc/passwd']", "import of 'sys' is not allowed"),
+    ("tm.process.argv", "attribute 'argv'"),
     ("tm.threatsFile = '/etc/passwd'", "attribute 'threatsFile'"),
     ("TM('x', threatsFile='/etc/passwd')", "keyword 'threatsFile'"),
     ("print(tm.report('/etc/passwd'))", "attribute 'report'"),
@@ -104,10 +104,6 @@ def test_import_os_is_rejected():
 def test_ast_rejects_unsafe_code(snippet, message):
     errors = pytm_runner.validate_source(GOOD_TM + "\n" + snippet + "\n")
     assert any(message in e for e in errors), errors
-
-
-def test_sys_argv_and_exit_are_allowed():
-    assert pytm_runner.validate_source(GOOD_TM + "\nimport sys\nif len(sys.argv) < 1:\n    sys.exit(1)\n") == []
 
 
 def test_pytm_classes_can_be_used_through_the_module():
