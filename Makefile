@@ -1,4 +1,4 @@
-.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint deps-sbom dast-up dast-web dast-down
+.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint deps-sbom dast-up dast-web dast-down rules
 
 help:
 	@echo "make test         Run the factory test suite"
@@ -12,6 +12,7 @@ help:
 	@echo "make dast-up      Build and start the throwaway app on the isolated DAST network"
 	@echo "make dast-web     Run the ZAP full scan (OpenAPI import and active scan) against the running app"
 	@echo "make dast-down    Remove the DAST containers and network"
+	@echo "make rules       Render CLAUDE.md and AGENTS.md for PLATFORM and ASVS_LEVEL (default 2) into out/rules"
 
 test:
 	python -m pytest -v
@@ -48,3 +49,9 @@ dast-web:
 
 dast-down:
 	python -m factory.dast.harness down
+
+ASVS_LEVEL ?= 2
+
+rules:
+	python -m factory.rules render --platform $(PLATFORM) --asvs-level $(ASVS_LEVEL) --target claude --out out/rules/CLAUDE.md
+	python -m factory.rules render --platform $(PLATFORM) --asvs-level $(ASVS_LEVEL) --target agents --out out/rules/AGENTS.md

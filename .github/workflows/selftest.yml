@@ -26,6 +26,17 @@ jobs:
           cmp first.json second.json
           python -c "import json; from factory import findings; items = findings.validate(json.load(open('first.json'))); print({f['rule_id']: f['severity'] for f in items})"
           sha256sum first.json second.json
+      - name: render security rules
+        run: |
+          python -m factory.rules render --platform web --asvs-level 2 --target claude --out "$RUNNER_TEMP/rules/CLAUDE.md"
+          grep -E '^## (Base|Secure defaults|Web|ASVS L1\+L2)$' "$RUNNER_TEMP/rules/CLAUDE.md"
+          if grep -qE '^- \*\*V[0-9.]+\*\* \(L3\)' "$RUNNER_TEMP/rules/CLAUDE.md"; then echo "L3 requirement found at L2"; exit 1; fi
+          grep -c '(L1)' "$RUNNER_TEMP/rules/CLAUDE.md"
+          grep -c '(L2)' "$RUNNER_TEMP/rules/CLAUDE.md"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rendered-rules
+          path: ${{ runner.temp }}/rules/
 
   secrets-integration:
     runs-on: ubuntu-24.04
