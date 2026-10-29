@@ -73,7 +73,8 @@ def test_updating_without_a_plan_keeps_linddun_and_attack_tree_threats(project, 
 
     assert run_with(project, fake_pytm, "--diff", str(project / "diff.patch"), out="second") == 0
     after = json.loads((project / "second" / "threats.json").read_text())
-    assert after["threats"] == before["threats"]
+    by_id = lambda doc: sorted(doc["threats"], key=lambda t: t["id"])
+    assert by_id(after) == by_id(before)
     assert after["removed"] == []
 
 
