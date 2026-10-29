@@ -79,3 +79,15 @@ url = "https://github.com/anchore/grype/releases/download/v0.121.0/grype_0.121.0
 sha256 = "64e07133d3486115de647a66581461dccf5c732748a0a3119077395565f15519"
 archive = "tar.gz"
 bin = "grype"
+
+[[tool]]
+name = "zap"
+version = "stable-2026-10-26"
+kind = "container"
+image = "ghcr.io/zaproxy/zaproxy@sha256:030d3df57735dacbb83464854758e674dd9ad01d79d12a129a8e58b1fd384238"
+
+[[tool]]
+name = "curl"
+version = "8.23.0"
+kind = "container"
+image = "docker.io/curlimages/curl@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93"
