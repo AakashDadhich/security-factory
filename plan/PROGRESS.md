@@ -41,7 +41,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 10 | deps-and-sbom | done |
 | 11 | gate-and-report | done |
 | 12 | dast-zap-baseline | done |
-| 13 | dast-zap-active-openapi | todo |
+| 13 | dast-zap-active-openapi | in progress |
 | 14 | project-record | todo |
 | 15 | security-rules-and-renderer | todo |
 | 16 | clarify-plan-stage | todo |
