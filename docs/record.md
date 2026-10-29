@@ -14,6 +14,8 @@ latest/
   findings.json                    the merged gate report, suppressed findings included
   run-manifest.json                the setup job's run manifest
   sbom-diff.json                   added, removed and changed packages since the previous latest/
+  threats.json                     the threat model from the threat-model stage, when it ran
+  review.json                      the findings of the review stage, when it ran
 ```
 
 A `runs/` entry is named `<UTC timestamp>-<run_id>.json` and holds `run_id`, `mode`, `ref`, `commit`, `status` (`pass` or `fail`), `counts`, `blocking_fingerprints`, `iteration` and `issue`. It is written for every run, pass or fail, on any branch or pull request.

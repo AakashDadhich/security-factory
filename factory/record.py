@@ -97,6 +97,9 @@ def apply_changes(work: Path, entry_name: str, entry: dict, update_latest: bool,
         manifest = artifacts / "setup" / "run-manifest.json"
         if manifest.exists():
             shutil.copyfile(manifest, staged / "run-manifest.json")
+        for source, name in (("threat-model/threats.json", "threats.json"), ("review/findings.json", "review.json")):
+            if (artifacts / source).exists():
+                shutil.copyfile(artifacts / source, staged / name)
         if new_bom.exists():
             shutil.copyfile(new_bom, staged / "sbom.cdx.json")
             _write_json(staged / "sbom-diff.json", sbom.diff(previous_components, sbom.components(new_bom)))

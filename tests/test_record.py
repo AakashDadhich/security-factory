@@ -86,6 +86,24 @@ def test_findings_in_latest_is_the_merged_report_with_suppressed(remote, tmp_pat
     assert json.loads((work / "latest" / "findings.json").read_text()) == [{"id": "x", "suppressed": True}]
 
 
+def test_latest_keeps_the_threat_model_and_review_findings_when_they_ran(remote, tmp_path):
+    artifacts = make_artifacts(tmp_path)
+    (artifacts / "threat-model").mkdir()
+    (artifacts / "threat-model" / "threats.json").write_text('{"threats": []}')
+    (artifacts / "review").mkdir()
+    (artifacts / "review" / "findings.json").write_text("[]")
+    write(remote, artifacts)
+    work = clone(remote, tmp_path)
+    assert (work / "latest" / "threats.json").read_text() == '{"threats": []}'
+    assert (work / "latest" / "review.json").read_text() == "[]"
+
+
+def test_latest_has_no_ai_files_when_the_ai_stages_were_skipped(remote, tmp_path):
+    write(remote, make_artifacts(tmp_path))
+    work = clone(remote, tmp_path)
+    assert not (work / "latest" / "threats.json").exists() and not (work / "latest" / "review.json").exists()
+
+
 @pytest.mark.parametrize("status,event,ref", [
     ("fail", "push", "refs/heads/main"),
     ("pass", "pull_request", "refs/pull/3/merge"),
