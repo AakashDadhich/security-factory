@@ -24,6 +24,7 @@ What this means for later chunks:
 - macOS jobs have no Docker, so container-based tools (for example ZAP and MobSF) run on `ubuntu-24.04`.
 - `make` isn't listed in the `macos-15` readme, but `/usr/bin/make` (GNU Make 3.81, from the Command Line Tools) is present. macOS jobs run `python -m factory.platform_check ensure-make` first (it installs GNU make with Homebrew if it's ever missing), then can use `make`.
 - SwiftLint isn't on either image, so it must be installed through `tools/versions.lock`.
+- pytm (1.4.0) is a library with no console script, so pipx can't install it. It uses lock kind `venv`: `python -m factory.tools install pytm` creates `~/.factory/venvs/pytm` with the job's Python 3.12 and installs `tools/pytm/requirements.txt` with `--require-hashes --no-deps --only-binary :all:` (pytm plus pydantic 2.14.1, pydantic-core 2.50.1, annotated-types, typing-extensions, typing-inspection; hashes are for the linux x86_64 CPython 3.12 wheels). Run models with `~/.factory/venvs/pytm/bin/python`.
 - The `ubuntu-latest` label moves to Ubuntu 26.04 in November 2026. The factory pins `ubuntu-24.04`, so it isn't affected.
 
 ## Usage limits (GitHub Free, standard GitHub-hosted runners)
