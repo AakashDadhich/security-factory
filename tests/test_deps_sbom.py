@@ -203,3 +203,13 @@ def test_osv_skips_the_factory_checkout_and_vendored_dirs(tmp_path):
     osv_cmd = tools.calls[0]
     excluded = [osv_cmd[i + 1] for i, a in enumerate(osv_cmd) if a == "--x-exclude"]
     assert ".factory" in excluded and "node_modules" in excluded
+
+
+def test_absolute_paths_are_made_relative_to_the_source_root(tmp_path):
+    report = tmp_path / "osv.sarif"
+    log = json.loads((FIXTURES / "osv.sarif").read_text())
+    for result in log["runs"][0]["results"]:
+        result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] = f"{tmp_path.resolve()}/app/package-lock.json"
+    report.write_text(json.dumps(log))
+    paths = {e["finding"]["location"]["path"] for e in stage.load_results(report, stage.OSV, tmp_path)}
+    assert paths == {"app/package-lock.json"}

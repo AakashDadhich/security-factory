@@ -46,7 +46,17 @@ def package_of(tool: str, message: str) -> tuple[str, str] | None:
     return None
 
 
-def load_results(sarif_path: Path, tool: str) -> list[dict]:
+def relativise(finding: dict, root: Path) -> dict:
+    prefix = str(root.resolve()).rstrip("/") + "/"
+    path = finding["location"].get("path", "")
+    if not path.startswith(prefix):
+        return finding
+    fields = {k: v for k, v in finding.items() if k not in ("id", "fingerprint")}
+    fields["location"] = {**finding["location"], "path": path[len(prefix):]}
+    return findings.make_finding(**fields)
+
+
+def load_results(sarif_path: Path, tool: str, root: Path | None = None) -> list[dict]:
     try:
         log = json.loads(sarif_path.read_text())
     except json.JSONDecodeError as e:
@@ -60,6 +70,8 @@ def load_results(sarif_path: Path, tool: str) -> list[dict]:
             if result.get("kind") in sarif.SKIPPED_KINDS:
                 continue
             finding = sarif.result_to_finding(result, run, STAGE, tool)
+            if root is not None:
+                finding = relativise(finding, root)
             message = sarif._text(result.get("message"))
             package = package_of(tool, message)
             entry = {"finding": finding, "package": package, "ids": vuln_ids(finding["rule_id"], message)}
@@ -195,7 +207,7 @@ def run(src: str | Path, out: str | Path, image: str | None = None, osv_bin: str
     grype_report = out / "grype.sarif"
     run_grype(sbom, grype_report, out / "tool-meta.json", grype_bin, runner)
 
-    result = merge(load_results(osv_report, OSV), load_results(grype_report, GRYPE))
+    result = merge(load_results(osv_report, OSV, src), load_results(grype_report, GRYPE, src))
     findings.write(out / "findings.json", result)
     print(f"deps-sbom: {len(result)} finding(s)")
     return result
