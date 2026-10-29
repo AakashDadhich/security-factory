@@ -1,0 +1,31 @@
+env:
+  contexts:
+    - name: app
+      urls:
+        - "{{TARGET}}"
+      includePaths:
+        - "{{TARGET}}.*"
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+jobs:
+  - type: spider
+    parameters:
+      context: app
+      maxDuration: 2
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+  - type: report
+    parameters:
+      template: traditional-json
+      reportDir: /zap/wrk
+      reportFile: zap-report
+      reportTitle: Factory ZAP baseline
+  - type: report
+    parameters:
+      template: traditional-html
+      reportDir: /zap/wrk
+      reportFile: zap-report
+      reportTitle: Factory ZAP baseline
