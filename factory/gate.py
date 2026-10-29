@@ -15,6 +15,7 @@ from factory.manifest import ManifestError
 
 POLICY_PATH = Path(__file__).resolve().parent.parent / "policy.yml"
 SETUP_JOB = "setup"
+AUTHORIZE_JOB = "authorize"
 MAX_SUPPRESSION_DAYS = 90
 GATE_STAGE = "gate"
 STAGE_RULES = ("stage-missing", "stage-failed")
@@ -111,7 +112,7 @@ def collect(artifacts_dir: str | Path) -> tuple[dict[str, list], dict[str, str]]
 def stage_rows(expected: list[stage_matrix.Stage], needs: dict | None, by_stage: dict, errors: dict) -> list[dict]:
     expected_by_name = {s.name: s for s in expected}
     names = set(expected_by_name) | {n for n in (needs or {}) if n != SETUP_JOB} | set(by_stage) | set(errors)
-    names -= {SETUP_JOB, GATE_STAGE}
+    names -= {SETUP_JOB, AUTHORIZE_JOB, GATE_STAGE}
     rows = []
     for name in sorted(names):
         job = (needs or {}).get(name)

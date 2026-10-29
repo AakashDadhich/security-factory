@@ -22,7 +22,7 @@ def _check(manifest) -> dict:
     return manifest
 
 
-def create(cfg: dict, *, mode: str, factory_ref: str, stages: list[str], env: dict) -> dict:
+def create(cfg: dict, *, mode: str, factory_ref: str, stages: list[str], env: dict, issue: int | None = None) -> dict:
     missing = [k for k in ("GITHUB_RUN_ID", "GITHUB_REPOSITORY", "GITHUB_SHA") if not env.get(k)]
     if missing:
         raise ManifestError(f"missing environment: {', '.join(missing)}")
@@ -32,7 +32,7 @@ def create(cfg: dict, *, mode: str, factory_ref: str, stages: list[str], env: di
         "mode": mode,
         "platform": values["platform"],
         "iteration": 0,
-        "issue": None,
+        "issue": issue or None,
         "repo": env["GITHUB_REPOSITORY"],
         "commit_sha": env["GITHUB_SHA"],
         "factory_ref": factory_ref,
@@ -68,10 +68,11 @@ def main(argv: list[str] | None = None) -> int:
     create_cmd.add_argument("--mode", required=True)
     create_cmd.add_argument("--factory-ref", required=True)
     create_cmd.add_argument("--stage", action="append", default=[], dest="stages")
+    create_cmd.add_argument("--issue", type=int, default=0, help="issue number, 0 for none")
     create_cmd.add_argument("--out", required=True)
     args = parser.parse_args(argv)
     try:
-        manifest = create(config.load(args.config), mode=args.mode, factory_ref=args.factory_ref, stages=args.stages, env=dict(os.environ))
+        manifest = create(config.load(args.config), mode=args.mode, factory_ref=args.factory_ref, stages=args.stages, env=dict(os.environ), issue=args.issue)
         write(args.out, manifest)
     except (ConfigError, ManifestError) as e:
         print(f"error: {e}", file=sys.stderr)
