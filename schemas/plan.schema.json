@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/plan.schema.json",
+  "title": "Plan",
+  "description": "Output of the clarify and plan stage. The model writes every field except asvs_level, personal_data and high_risk_features, which the stage derives deterministically.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "features",
+    "requirements",
+    "data_handled",
+    "users",
+    "out_of_scope",
+    "risk_rating",
+    "stores_personal_data",
+    "takes_payments",
+    "abuse_cases",
+    "open_questions",
+    "asvs_level",
+    "personal_data",
+    "high_risk_features"
+  ],
+  "properties": {
+    "summary": {"$ref": "#/$defs/text"},
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "description", "risk"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "name": {"$ref": "#/$defs/text"},
+          "description": {"$ref": "#/$defs/text"},
+          "risk": {"$ref": "#/$defs/risk"}
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "testable_check", "asvs_refs"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "text": {"$ref": "#/$defs/text"},
+          "testable_check": {"$ref": "#/$defs/text"},
+          "asvs_refs": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^V[0-9]+\\.[0-9]+\\.[0-9]+$"}
+          }
+        }
+      }
+    },
+    "data_handled": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "classification"],
+        "properties": {
+          "name": {"$ref": "#/$defs/text"},
+          "classification": {"enum": ["public", "internal", "personal", "sensitive", "credentials", "payment"]}
+        }
+      }
+    },
+    "users": {"type": "array", "items": {"$ref": "#/$defs/text"}},
+    "out_of_scope": {"type": "array", "items": {"$ref": "#/$defs/text"}},
+    "risk_rating": {"$ref": "#/$defs/risk"},
+    "stores_personal_data": {"type": "boolean"},
+    "takes_payments": {"type": "boolean"},
+    "abuse_cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["feature_id", "attacker_goal", "steps", "mitigation"],
+        "properties": {
+          "feature_id": {"$ref": "#/$defs/id"},
+          "attacker_goal": {"$ref": "#/$defs/text"},
+          "steps": {"$ref": "#/$defs/text"},
+          "mitigation": {"$ref": "#/$defs/text"}
+        }
+      }
+    },
+    "open_questions": {"type": "array", "items": {"$ref": "#/$defs/text"}},
+    "asvs_level": {"type": "integer", "minimum": 1, "maximum": 3},
+    "personal_data": {"type": "boolean"},
+    "high_risk_features": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,39}$"},
+    "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "risk": {"enum": ["low", "medium", "high"]}
+  }
+}
