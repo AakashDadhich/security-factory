@@ -1,0 +1,14 @@
+repos:
+  - repo: local
+    hooks:
+      - id: factory-semgrep
+        name: semgrep (factory rule sets)
+        entry: __SEMGREP_ENTRY__
+        language: system
+        pass_filenames: true
+      - id: factory-gitleaks
+        name: gitleaks (staged changes)
+        entry: __GITLEAKS_ENTRY__
+        language: system
+        pass_filenames: false
+        always_run: true
