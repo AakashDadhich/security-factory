@@ -290,18 +290,22 @@ def attack_tree_pass(plan: dict, doc: dict, out: Path, inputs: list[Path], names
     return adapter.EXIT_OK, doc
 
 
-def run(plan_path: Path, out: Path, previous_dir: Path | None, python: Path, workdir: Path | None = None,
-        timeout: int = pytm_runner.TIMEOUT_SECONDS, image: str | None = None) -> int:
-    load_plan(plan_path)
+def run(plan_path: Path | None, out: Path, previous_dir: Path | None, python: Path, workdir: Path | None = None,
+        timeout: int = pytm_runner.TIMEOUT_SECONDS, image: str | None = None, diff_path: Path | None = None) -> int:
+    context = plan_path or diff_path
+    if context is None:
+        raise ThreatModelError("either a plan or a diff is required")
+    if plan_path is not None:
+        load_plan(plan_path)
     previous_paths, previous = load_previous(previous_dir)
     if previous_paths:
         print(f"updating the existing model from {', '.join(map(str, previous_paths))}")
-    code, model = pytm_runner.build(plan_path, out, previous_paths, python, workdir, timeout, image)
+    code, model = pytm_runner.build(context, out, previous_paths, python, workdir, timeout, image)
     if model is None:
         return code
     model_version = hashlib.sha256((out / "tm.py").read_bytes()).hexdigest()
 
-    inputs = [out / "elements.json", plan_path]
+    inputs = [out / "elements.json", context]
     if previous is not None:
         inputs.append(previous_dir / "threats.json")
     names, asvs = pytm_runner.element_names(model), asvs_ids()
@@ -317,13 +321,17 @@ def run(plan_path: Path, out: Path, previous_dir: Path | None, python: Path, wor
     doc = merge(json.loads(reply_path.read_text())["threats"], previous, model_version)
     passes = {"stride": {"status": "ran"}}
 
-    plan = load_plan(plan_path)
-    code, doc = linddun_pass(plan, doc, out, inputs, names, asvs, passes, workdir)
-    if code != adapter.EXIT_OK:
-        return code
-    code, doc = attack_tree_pass(plan, doc, out, inputs, names, asvs, passes, workdir)
-    if code != adapter.EXIT_OK:
-        return code
+    if plan_path is None:
+        for name in ("linddun", "attack-trees"):
+            passes[name] = {"status": "skipped", "reason": "there is no plan, so existing threats of this kind are kept"}
+    else:
+        plan = load_plan(plan_path)
+        code, doc = linddun_pass(plan, doc, out, inputs, names, asvs, passes, workdir)
+        if code != adapter.EXIT_OK:
+            return code
+        code, doc = attack_tree_pass(plan, doc, out, inputs, names, asvs, passes, workdir)
+        if code != adapter.EXIT_OK:
+            return code
     (out / "passes.json").write_text(json.dumps(passes, indent=2) + "\n")
 
     validate_threats(doc, "threats.json")
@@ -346,7 +354,8 @@ def run(plan_path: Path, out: Path, previous_dir: Path | None, python: Path, wor
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m factory.stages.threat_model",
                                      description="Build the pytm model and STRIDE threats for a plan")
-    parser.add_argument("--plan", required=True, type=Path)
+    parser.add_argument("--plan", type=Path)
+    parser.add_argument("--diff", type=Path, help="check mode: the change under review, used when there is no plan")
     parser.add_argument("--out", default=Path("out/threat-model"), type=Path)
     parser.add_argument("--previous", default=Path("security"), type=Path,
                         help="directory holding the committed tm.py and threats.json, if any")
@@ -356,9 +365,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sandbox", choices=("docker", "none"), default="docker",
                         help="run pytm in the pinned no-network container (default) or directly")
     args = parser.parse_args(argv)
+    if (args.plan is None) == (args.diff is None):
+        parser.error("give exactly one of --plan and --diff")
     try:
         image = pytm_runner.sandbox_image(args.sandbox)
-        return run(args.plan, args.out, args.previous, args.pytm_python, args.workdir, args.timeout, image)
+        return run(args.plan, args.out, args.previous, args.pytm_python, args.workdir, args.timeout, image, args.diff)
     except (ThreatModelError, RunnerError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

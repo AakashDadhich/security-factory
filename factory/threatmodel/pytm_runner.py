@@ -300,13 +300,13 @@ def _ask(stage: str, inputs: list[Path], out_path: Path, workdir: Path | None) -
     return code, json.loads(out_path.read_text())["tm_py"]
 
 
-def build(plan_path: Path, out: Path, previous: list[Path], python: Path,
+def build(context: Path, out: Path, previous: list[Path], python: Path,
           workdir: Path | None = None, timeout: int = TIMEOUT_SECONDS,
           image: str | None = None) -> tuple[int, dict | None]:
     if not python.is_file():
         raise RunnerError(f"pytm interpreter not found at {python}; run `python -m factory.tools install pytm`")
     out.mkdir(parents=True, exist_ok=True)
-    inputs = [plan_path, *previous]
+    inputs = [context, *previous]
     code, source = _ask(STAGE, inputs, out / "tm-reply.json", workdir)
     if source is None:
         return code, None
