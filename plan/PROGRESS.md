@@ -44,7 +44,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 13 | dast-zap-active-openapi | done |
 | 14 | project-record | done |
 | 15 | security-rules-and-renderer | done |
-| 16 | clarify-plan-stage | todo |
+| 16 | clarify-plan-stage | in progress |
 | 17 | threat-model-pytm-stride | todo |
 | 18 | threat-model-linddun-attacktrees | todo |
 | 19 | secure-codegen-stage | todo |
