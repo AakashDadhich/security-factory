@@ -150,7 +150,7 @@ Added `factory/record.py`, `tests/test_record.py`, `docs/record.md` and the `rec
 - selftest run `40831540045`: all 6 jobs `success`; `407 passed, 2 skipped`, including the 15 record tests (naming, latest rule, SBOM diff, push retry on a bare repo). Pass.
 - `factory-test-web` push run `40831658255`: all 11 jobs `success` incl. `record`. `gh api .../branches/factory-record` returns the branch; `contents/latest/sbom.cdx.json?ref=factory-record` returns a 70652-byte file. Pass.
 - `runs/` has one entry per run (3 after three pushes); `gh run list --branch factory-record` shows 0 runs. Pass.
-- Second push (run `40832327...` on `312feb7`, helmet 8.3.0 to 8.2.0): `latest/sbom-diff.json` is `changed: [{helmet, [8.3.0], [8.2.0]}]`. Pass. Test app restored to helmet 8.3.0 and supertest 7.3.1 afterwards (`9db6cb8`).
+- Second push (run `40832542834` on `312feb7`, helmet 8.3.0 to 8.2.0): `latest/sbom-diff.json` is `changed: [{helmet, [8.3.0], [8.2.0]}]`. Pass. Test app restored to helmet 8.3.0 and supertest 7.3.1 afterwards (`9db6cb8`).
 
 ### 2026-10-29, chunk 13 (dast-zap-active-openapi)
 Added `zap/full.yaml`, `factory/dast/plan.py`, `tests/test_dast_plan.py`, fixtures, stage default `full`, workflow and Makefile updates, plus (owner chose this for the URL check) an `export` job writing the sites tree. Master session pushed the commits.
