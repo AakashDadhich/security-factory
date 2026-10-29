@@ -43,7 +43,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 12 | dast-zap-baseline | done |
 | 13 | dast-zap-active-openapi | done |
 | 14 | project-record | done |
-| 15 | security-rules-and-renderer | todo |
+| 15 | security-rules-and-renderer | in progress |
 | 16 | clarify-plan-stage | todo |
 | 17 | threat-model-pytm-stride | todo |
 | 18 | threat-model-linddun-attacktrees | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 14 are done. Next in order is chunk 15 (security-rules-and-renderer). Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 15 are done except chunk 15's CI check (see its log entry). Next in order is chunk 16. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -142,6 +142,8 @@ Chunks 00 to 14 are done. Next in order is chunk 15 (security-rules-and-renderer
 
 - Project record (chunk 14): `python -m factory.record read --repo <o/n> --out <dir>` and `write --repo <o/n> --artifacts in --event <e> --ref <r> --default-branch <b> [--run-id] [--commit]` (`--remote` overrides the URL, used by tests). Layout and readers in `docs/record.md`. Branch `factory-record` has `runs/<UTC>-<run_id>.json` and, after a default-branch push that passes, `latest/{sbom.cdx.json,findings.json,run-manifest.json,sbom-diff.json}`. Job `record` needs `gate`, skips fork PRs, mints an App token (`actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510`, v3.3.0, `permission-contents: write`), downloads `gate`, `deps-sbom` and `setup` artifacts. `FACTORY_APP_PRIVATE_KEY` is declared as an optional `workflow_call` secret (actionlint needs it). Push retry re-fetches, resets and re-applies rather than rebasing (same result for add or replace-only files). Bot commit email `349043243+aakashdadhich-factory-bot[bot]@users.noreply.github.com`.
 - Syft omits dev dependencies from the SBOM, so `sbom-diff.json` only reflects runtime dependencies (a `supertest` bump showed no diff; a `helmet` bump did).
+
+- Rules (chunk 15): `rules/{base,secure-defaults,web,apple}.md` (front matter `id`, `title`, `applies_to`), `rules/asvs/asvs.json` (345 requirements from ASVS 5.0.0 tag `v5.0.0_release`: `id`, `chapter`, `level`, `text`; L1 70, L2 183, L3 92) and `SOURCE.md`. Base is OWASP Top 10:2025. `python -m factory.rules render --platform <p> --asvs-level <n> [--threats f] --target claude|agents --out f` and `checklist --asvs-level <n> --out f` (`make rules PLATFORM= ASVS_LEVEL=`). Spec in `docs/rules.md`. Sections: Base, Secure defaults, platform (`Web` or `Apple`), `ASVS L1+..+Ln`, and `Project-specific mitigations` only when `--threats` is given. `load_threats` accepts a list or `{"threats": [...]}`; threat `id`, optional `title`, `status` (closed/mitigated/resolved/accepted/rejected skipped), `mitigations` as strings or `{id?, text, asvs|asvs_refs}`. Chunk 17/18 should write that shape to `security/threats.json`. Checklist items are `{id, chapter, level, text}` for chunk 20. Snapshots in `tests/snapshots/rules-*.md`: regenerate with the render command when a rule file changes. Selftest renders web L2 and uploads artifact `rendered-rules`.
 
 ## Session log
 
