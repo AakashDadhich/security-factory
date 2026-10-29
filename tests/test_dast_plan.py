@@ -20,13 +20,13 @@ def jobs(openapi: bool, port: int = 3000) -> list[dict]:
 
 def test_full_plan_with_openapi_has_jobs_in_order():
     assert [j["type"] for j in jobs(True)] == [
-        "openapi", "spider", "passiveScan-wait", "activeScan", "passiveScan-wait", "report", "report",
+        "openapi", "spider", "passiveScan-wait", "activeScan", "passiveScan-wait", "export", "report", "report",
     ]
 
 
 def test_full_plan_without_openapi_has_no_import_job():
     assert [j["type"] for j in jobs(False)] == [
-        "spider", "passiveScan-wait", "activeScan", "passiveScan-wait", "report", "report",
+        "spider", "passiveScan-wait", "activeScan", "passiveScan-wait", "export", "report", "report",
     ]
 
 

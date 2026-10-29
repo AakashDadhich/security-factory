@@ -17,6 +17,7 @@ TOOL = "zap"
 PLAN_DIR = dast_plan.PLAN_DIR
 RISK = {"3": "high", "2": "medium", "1": "low", "0": "info"}
 REPORT_NAME = "zap-report"
+SITES_TREE = "sites-tree.yaml"
 
 
 class StageError(Exception):
@@ -100,7 +101,7 @@ def run(plan: str, out: Path, config_path: Path, image: str, runner=None, projec
         raise StageError(f"ZAP failed with exit code {proc.returncode}")
     if not report.is_file():
         raise StageError("ZAP did not write a JSON report")
-    for name in (f"{REPORT_NAME}.json", f"{REPORT_NAME}.html"):
+    for name in (f"{REPORT_NAME}.json", f"{REPORT_NAME}.html", SITES_TREE):
         if (work / name).is_file():
             shutil.copy(work / name, out / name)
     shutil.rmtree(work, ignore_errors=True)

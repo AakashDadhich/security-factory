@@ -26,6 +26,12 @@ jobs:
   - type: passiveScan-wait
     parameters:
       maxDuration: 5
+  - type: export
+    parameters:
+      context: app
+      type: yaml
+      source: sitestree
+      fileName: /zap/wrk/sites-tree.yaml
   - type: report
     parameters:
       template: traditional-json
