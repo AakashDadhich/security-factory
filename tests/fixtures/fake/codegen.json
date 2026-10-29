@@ -1,0 +1,10 @@
+{
+  "summary": "Added the notes routes and tests.",
+  "requirements": [
+    {"id": "R1", "status": "implemented", "files": ["src/notes.ts"], "note": "Requires a session."}
+  ],
+  "mitigations": [
+    {"id": "TM-001-M1", "status": "implemented", "files": ["src/notes.ts"], "note": "Owner id is part of every lookup."}
+  ],
+  "open_questions": []
+}

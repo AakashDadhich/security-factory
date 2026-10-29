@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/codegen-reply.schema.json",
+  "title": "Codegen reply",
+  "description": "What the coding agent reports after editing the working tree. The edits themselves are files on disk; this reply is only the account of them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "requirements", "mitigations", "open_questions"],
+  "properties": {
+    "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "requirements": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/item"}
+    },
+    "mitigations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/item"}
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {"type": "string", "maxLength": 500}
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "files", "note"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 40},
+        "status": {"enum": ["implemented", "partial", "not-done"]},
+        "files": {"type": "array", "items": {"type": "string", "maxLength": 300}},
+        "note": {"type": "string", "maxLength": 500}
+      }
+    }
+  }
+}
