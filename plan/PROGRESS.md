@@ -49,7 +49,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 18 | threat-model-linddun-attacktrees | done |
 | 19 | secure-codegen-stage | done |
 | 20 | second-agent-review | done |
-| 21 | fix-loop | todo |
+| 21 | fix-loop | done |
 | 22 | check-mode-wiring | todo |
 | 23 | vulnerable-web-acceptance | todo |
 | 24 | improvement-loop | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 20 are done. Next in order is chunk 21. Codegen (chunk 19) is documented in `docs/pipeline.md` ("Code generation stages"): `codegen-commit` outputs `sha`, scanning jobs check out `factory/<issue>` at that sha in spec and change modes, `factory.patch_policy` and `factory.precommit` are reusable. Check `plan/00-index.md` for chunks 20 onward. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 21 are done. Next in order is chunk 22 (check-mode-wiring; chunk 20 notes say it must add check mode to the matrix for `review`). Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -171,7 +171,20 @@ Chunks 00 to 20 are done. Next in order is chunk 21. Codegen (chunk 19) is docum
 - `test_model_jobs_are_skipped_when_authorize_fails` now allows a status function in a model job's `if` only when it also requires `needs.setup.result == 'success'` (review needs `!cancelled()` so check-mode runs with `codegen-commit` skipped still work).
 - Test project leftovers: branch `factory/scratch-sqli` (commit with `src/noteLookup.ts`, planted SQL concatenation) still exists on `factory-test-web`, PR #6 closed unmerged. Delete the branch after the owner agrees.
 
+- Fix loop (chunk 21): `factory/fixloop.py` (`decide`, `parse_fix_inputs`, `dispatch_body`, `blocking_findings`, `render_comment`; CLI `decide|blocking|dispatch|comment`). Spec in `docs/pipeline.md` ("Fix loop"). New workflow inputs `iteration` and `findings-run-id` (numbers); stub maps `repository_dispatch` `factory-fix` (payload `issue`, `iteration`, `findings_run_id`) to `mode: fix` and grants `actions: read`. `authorize` validates the fix payload (positive integers, iteration 1 or 2). Jobs: `fix-input` (non-AI, `actions: read`, runs `gh run download <id> -n gate -n setup`, checks the earlier run failed, same issue, iteration one lower, writes `blocking.json`), `next-step` (needs `gate`, `always()`, no AI; decides dispatch, stop or done; App key only in the dispatch mint step; stop comments the report and adds `factory:needs-human`, creating the label if missing). Deviation from the chunk text: findings are downloaded in `fix-input`, not in `codegen-ai`, so `codegen-ai` keeps `contents: read` and no GitHub token.
+- Fix mode in codegen: `python -m factory.stages.codegen --fix-findings in/fix-input/blocking.json --platform p --issue n --iteration k` requires `origin/factory/<issue>`, reads `security/` from that branch, uses `prompts/fix.md` and `schemas/fix-reply.schema.json` (adapter stages `fix`, `fix-retry-N`; fake `tests/fixtures/fake/fix.json`). `summary.json` gets `fixes`, `account`, `open_questions`. Commit message in fix mode is `fix: address findings on #N (factory iteration k)`. Manifest `--iteration` records the round.
+- GitHub Actions gotcha: a job with no status function is skipped when ANY ancestor job was skipped, not only direct needs. In fix mode `plan`, `threat-model` are skipped, so `codegen-ai` and `codegen-commit` use `!cancelled() && needs.setup.result == 'success' && ...`. The model-chain test now allows `!cancelled()` only with `needs.setup.result == 'success'` and never `always()`.
+- Concurrency: group `factory-issue-<issue>` for spec, change and fix (`cancel-in-progress: false`), a per-run group otherwise. Cancelling a run does not stop a `next-step` that already dispatched: cancel the dispatched run too.
+- Test project leftovers: issue #7 (first try at the diagnostics issue, labelled `factory:spec`, two cancelled fix runs, branch `factory/7` was never created) and issue #8 (retry, now labelled `factory:needs-human`, branch `factory/8` with two commits). Both open. Ruleset and stub on `factory-test-web` updated (stub also needs `actions: read`).
+- Observed in the issue #8 loop: the generated diagnostics app failed to become healthy in `dast-web` (so the gate failed on missing stages, not on a code finding), and fix attempt 2 changed no files three times. A later chunk may want the fix prompt to see stage failures, or the loop to treat non-code failures differently.
+
 ## Session log
+
+### 2026-10-29, chunk 21 (fix-loop)
+Added `factory/fixloop.py`, `prompts/fix.md`, `schemas/fix-reply.schema.json`, codegen fix mode, authorize validation, manifest `--iteration`, the `fix-input` and `next-step` jobs, concurrency, stub trigger (template and `factory-test-web`), docs, `tests/test_fixloop.py` and fix tests in `test_codegen.py`. Pushed with owner pre-approval. A first live run found that `codegen-commit` was skipped because of a skipped ancestor; fixed in `7841bcd`.
+- Done-when: selftest on `7841bcd` green, all 8 jobs `success` (837+ tests, the full decision table in `test_decision_table` with 18 rows). Pass.
+- Done-when: spec issue #8 "Add a diagnostics endpoint that runs a shell command from a query parameter (retry)". Run `40956459392` (issues) gate failed, `next-step` dispatched `factory-fix {issue 8, iteration 1}`; run `40958183969` (`repository_dispatch`, mode fix, iteration 1) gate failed, dispatched iteration 2; run `40959205912` (`repository_dispatch`, iteration 2) gate failed and `next-step` commented "Factory stopped after 2 fix attempts" with the report and added `factory:needs-human`. Pass.
+- Done-when: runs for issue #8: exactly 3 (the plain `app-ci` push runs on `factory/8` are a different workflow). Payload validation (iteration 3, non-numeric issue, negative run id) is covered by `test_bad_fix_inputs_are_rejected` and the authorize tests. Pass. Issue #7 (the earlier attempt on the buggy workflow) has 2 cancelled dispatch runs.
 
 ### 2026-10-29, chunk 20 (second-agent-review)
 Added `schemas/review.schema.json`, `prompts/security-review.md`, `factory/stages/review.py`, `tests/test_review.py` (44 tests), `tests/fixtures/fake/review.json`, the `review` job, matrix entry, gate Review section, manifest stage and docs. Pushed with owner pre-approval.
