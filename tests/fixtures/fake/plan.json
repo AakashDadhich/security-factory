@@ -1,0 +1,27 @@
+{
+  "summary": "Signed-in users can create, read, edit and delete private text notes. Each note is visible only to its owner.",
+  "features": [
+    {"id": "F1", "name": "Sign in", "description": "Users sign in with an email address and password and get a session cookie.", "risk": "high"},
+    {"id": "F2", "name": "Private notes", "description": "A signed-in user creates, lists, edits and deletes their own text notes.", "risk": "medium"}
+  ],
+  "requirements": [
+    {"id": "R1", "text": "Note endpoints require a valid session.", "testable_check": "GET /api/notes without a session cookie returns 401.", "asvs_refs": ["V8.2.1"]},
+    {"id": "R2", "text": "A user can only read and change their own notes.", "testable_check": "User B requesting GET /api/notes/<id of A's note> gets 404.", "asvs_refs": ["V8.2.2"]},
+    {"id": "R3", "text": "Note text is limited to 10 kB and stored as plain text.", "testable_check": "POST /api/notes with 11 kB of text returns 413.", "asvs_refs": []}
+  ],
+  "data_handled": [
+    {"name": "email address", "classification": "personal"},
+    {"name": "password hash", "classification": "credentials"},
+    {"name": "note text", "classification": "sensitive"}
+  ],
+  "users": ["signed-in user"],
+  "out_of_scope": ["sharing notes", "attachments"],
+  "risk_rating": "medium",
+  "stores_personal_data": true,
+  "takes_payments": false,
+  "abuse_cases": [
+    {"feature_id": "F1", "attacker_goal": "Take over an account.", "steps": "Try leaked passwords against the sign-in form.", "mitigation": "Rate limit sign-in and check passwords against breached lists."},
+    {"feature_id": "F2", "attacker_goal": "Read another user's notes.", "steps": "Change the note id in GET /api/notes/<id>.", "mitigation": "Look notes up by id and owner together."}
+  ],
+  "open_questions": ["Is self sign-up allowed?"]
+}
