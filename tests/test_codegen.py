@@ -328,7 +328,7 @@ def test_clean_patch_passes_inspection():
 
 @pytest.mark.parametrize("path", [".github/workflows/x.yml", ".GitHub/actions/a/action.yml", ".env", ".env.local", "api/.env.production",
                                   ".git/hooks/pre-commit", "a/.git/config", "../x", "/etc/passwd", "a//b", "a/./b", ".npmrc",
-                                  ".semgrepignore", ".gitleaksignore", ".pre-commit-config.yaml", ".gitattributes", "a\\b", "a\nb"])
+                                  "factory/gate.py", "Factory/x.py", "sitecustomize.py", "src/usercustomize.py", "x.pth", ".semgrepignore", ".gitleaksignore", ".pre-commit-config.yaml", ".gitattributes", "a\\b", "a\nb"])
 def test_forbidden_paths(path):
     assert patch_policy.path_violation(path)
 
@@ -696,3 +696,7 @@ def test_integration_real_hooks_block_insecure_code_and_secrets(tmp_path):
     )
     sh(repo, "add", "-A")
     assert precommit.run_hooks(repo, config).blocked
+
+
+def test_workflow_keeps_the_project_checkout_off_the_python_path():
+    assert yaml.safe_load(WORKFLOW.read_text())["env"]["PYTHONSAFEPATH"] == "1"

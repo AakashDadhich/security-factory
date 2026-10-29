@@ -51,6 +51,10 @@ def path_violation(path: str) -> str | None:
     if lowered[0] == ".github":
         return "path inside .github"
     name = lowered[-1]
+    if lowered[0] == "factory":
+        return "folder named like the factory package"
+    if name in ("sitecustomize.py", "usercustomize.py") or name.endswith(".pth"):
+        return "Python start-up hook"
     if name.startswith(".env") and name != ".env.example":
         return "environment file"
     if name in GUARDED_NAMES:
