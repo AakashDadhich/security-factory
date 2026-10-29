@@ -42,7 +42,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 11 | gate-and-report | done |
 | 12 | dast-zap-baseline | done |
 | 13 | dast-zap-active-openapi | done |
-| 14 | project-record | todo |
+| 14 | project-record | in progress |
 | 15 | security-rules-and-renderer | todo |
 | 16 | clarify-plan-stage | todo |
 | 17 | threat-model-pytm-stride | todo |
