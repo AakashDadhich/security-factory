@@ -152,6 +152,7 @@ Added the four rule files, ASVS 5.0.0 data and source note, `factory/rules.py`, 
 - selftest run `40833344471`: all 6 jobs `success`; `433 passed, 2 skipped`, including 26 in `test_rules.py` (snapshots web L2 and ios L3, level filter, determinism, mitigations). Pass.
 - `test` job render step printed `## Base`, `## Secure defaults`, `## Web`, `## ASVS L1+L2`; the L3 grep found 0 matches; artifact `rendered-rules` uploaded. Pass.
 - `rules/asvs/SOURCE.md` names tag `v5.0.0_release` and CC BY-SA 4.0 (`test_source_names_tag_and_licence`). Pass.
+- After a security review, `load_threats` now validates threat input (ids, ASVS refs, one-line text, 500 character cap, no Markdown structure). selftest run `40848571334` on `ce10e1f`: all 6 jobs `success`, `442 passed, 2 skipped`. Pass.
 
 ### 2026-10-29, chunk 14 (project-record)
 Added `factory/record.py`, `tests/test_record.py`, `docs/record.md` and the `record` job. Selftest first failed actionlint (undeclared secret), fixed. Master session pushed the commits.
