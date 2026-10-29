@@ -47,7 +47,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 16 | clarify-plan-stage | done |
 | 17 | threat-model-pytm-stride | done |
 | 18 | threat-model-linddun-attacktrees | done |
-| 19 | secure-codegen-stage | in progress (code done, CI green; live spec run not yet done) |
+| 19 | secure-codegen-stage | done |
 | 20 | second-agent-review | todo |
 | 21 | fix-loop | todo |
 | 22 | check-mode-wiring | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 18 are done. Next in order is chunk 19 (secure codegen; it should commit `security/tm.py` and `security/threats.json` from the `threat-model` artifact, plus `attack-trees/*.md` if wanted). Check `plan/00-index.md` for chunks 20 onward. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 19 are done. Next in order is chunk 20. Codegen (chunk 19) is documented in `docs/pipeline.md` ("Code generation stages"): `codegen-commit` outputs `sha`, scanning jobs check out `factory/<issue>` at that sha in spec and change modes, `factory.patch_policy` and `factory.precommit` are reusable. Check `plan/00-index.md` for chunks 20 onward. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -168,11 +168,14 @@ Chunks 00 to 18 are done. Next in order is chunk 19 (secure codegen; it should c
 
 ## Session log
 
-### 2026-10-29, chunk 19 (secure-codegen-stage), IN PROGRESS
+### 2026-10-29, chunk 19 (secure-codegen-stage)
 Pushed to main: `pre-commit` 4.7.0 pin, `factory/patch_policy.py`, `factory/precommit.py`, `factory/stages/codegen.py`, `codegen_commit.py`, `prompts/codegen.md`, `schemas/codegen-reply.schema.json`, `templates/precommit/`, jobs `codegen-ai` and `codegen-commit`, scanning jobs now check out the pushed commit, selftest job `codegen-integration`, docs. Owner chose no command execution in `codegen-ai` (agent has Read/Grep/Glob/Edit/Write only, works in a copy without `.git`).
 - Done-when: selftest green on `23d1f6f` (run `40913320023`, all 8 jobs, incl. `codegen-integration` with real pre-commit, Semgrep and Gitleaks). Pass.
-- Done-when (spec run): NOT done. Issue #3 relabelled, run `40913560177`: `threat-model` failed with exit 75 (Claude usage limit), so `codegen-ai` and the rest skipped. Re-run later by removing and re-adding `factory:spec` on issue #3, then check branch `factory/3` (one bot commit), `git log origin/main` has no bot commits, scanning jobs ran on that commit. The workflow-grep check is covered by `test_app_private_key_only_reaches_codegen_commit_and_record`.
-- Not yet verified live: Gitleaks flags on the pinned version passed in `codegen-integration`; CodeQL upload for a SHA on `factory/N`; App token push rights.
+- Done-when (spec run): issue #3 relabelled, run `40940423539` all 17 jobs `success` (`codegen-ai`, `codegen-commit`, all scanners, `gate`, `record`). Branch `factory/3` has one commit `65d8889` by `aakashdadhich-factory-bot[bot]`, `feat: implement #3 (factory iteration 0)`, with `src/notes.ts`, `src/app.ts`, `test/notes.test.ts`, `CLAUDE.md`, `AGENTS.md`, `security/{plan.json,tm.py,threats.json}`. The first attempt (`40913560177`) hit the Claude usage limit in `threat-model` and was re-run. Pass.
+- Done-when: `secrets`, `sast-semgrep`, `sast-codeql`, `sast-eslint`, `deps-sbom`, `dast-web` and `gate` logs show checkout `ref: 65d88891...`, the bot commit. Pass.
+- Done-when: bot commits on `origin/main` of `factory-test-web`: 0. Pass.
+- Done-when: `FACTORY_APP_PRIVATE_KEY` appears only in `codegen-commit` and `record` (plus the `workflow_call` declaration); `test_app_private_key_only_reaches_codegen_commit_and_record` passes. Pass.
+- Verified live: App token push to `factory/3`, CodeQL and DAST on the generated commit. Generated code was never executed in `codegen-ai`; its tests only run in the project's own CI (chunk 21 fix loop should run them in a sandbox). Fix mode is in the matrix but not wired in the workflow yet.
 
 ### 2026-10-29, chunk 18 (threat-model-linddun-attacktrees)
 Added `schemas/attack-tree.schema.json`, `prompts/{threat-model-linddun,attack-tree}.md`, `factory/threatmodel/attack_tree.py`, the LINDDUN and attack tree passes in `factory/stages/threat_model.py`, `tests/test_threat_model_conditional.py` (20 test functions), fixtures, the Mermaid snapshot and docs. First selftest run (`40904692235`) failed one test that counted `.meta.json` files as trees (test bug); fixed in `df9eeb5`. Pushed with owner pre-approval.
