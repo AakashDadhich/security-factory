@@ -18,6 +18,7 @@ STAGES = (
     Stage("threat-model", modes=("spec", "change")),
     Stage("codegen-ai", modes=("spec", "change", "fix")),
     Stage("codegen-commit", modes=("spec", "change", "fix")),
+    Stage("review", modes=("spec", "change", "fix")),
     Stage("secrets"),
     Stage("sast-semgrep"),
     Stage("sast-codeql", platforms=("web",)),

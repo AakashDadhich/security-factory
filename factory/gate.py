@@ -254,6 +254,13 @@ def render_markdown(result: dict, rows: list[dict], merged: list[dict]) -> str:
     lines += ["", "### Stages", "", "| Stage | Status | Detail |", "|---|---|---|"]
     lines += [f"| {r['stage']} | {r['status']} | {_cell(r['detail'])} |" for r in rows] or ["| (none) | | |"]
     live = [f for f in merged if not f["suppressed"]]
+    reviewed = [f for f in live if "review" in f["stages"]]
+    lines += ["", "### Review", ""]
+    if reviewed:
+        lines += ["| Severity | Where | Title |", "|---|---|---|"]
+        lines += [f"| {f['severity']} | {_cell(_where(f))} | {_cell(f['title'])} |" for f in reviewed[:TABLE_LIMIT]]
+    else:
+        lines.append("None.")
     lines += ["", "### Findings", ""]
     if live:
         lines += ["| Severity | Where | Title | Tools |", "|---|---|---|---|"]

@@ -356,3 +356,32 @@ def test_policy_file_must_be_valid(tmp_path):
     bad.write_text("fail_on: [loud]\n")
     with pytest.raises(gate.PolicyError):
         gate.load_policy(bad)
+
+
+SPEC_STAGES = [s.name for s in stage_matrix.expected("web", "spec")]
+
+
+def review_finding(severity="high"):
+    return finding(severity, stage="review", tool="claude-code", rule="review-cwe-89", path="src/notes.ts", line=50, cwe=("CWE-89",), source="ai-review")
+
+
+def test_report_has_a_review_section_that_is_empty_when_nothing_was_found(tmp_path):
+    root, cfg = setup_run(tmp_path, platform_stages=SPEC_STAGES, mode="spec")
+    assert run_gate(tmp_path, root, cfg, needs_for(SPEC_STAGES)) == 0
+    assert "### Review\n\nNone.\n" in (tmp_path / "out" / "report.md").read_text()
+
+
+def test_review_findings_are_listed_in_the_review_section_and_block_the_gate(tmp_path):
+    root, cfg = setup_run(tmp_path, {"review": [review_finding("high")]}, platform_stages=SPEC_STAGES, mode="spec")
+    assert run_gate(tmp_path, root, cfg, needs_for(SPEC_STAGES)) == 1
+    section = (tmp_path / "out" / "report.md").read_text().split("### Review")[1].split("### Findings")[0]
+    assert "src/notes.ts:50" in section and "high" in section
+    assert result_of(tmp_path)["status"] == "fail"
+
+
+def test_missing_review_artifact_fails_closed_in_spec_mode(tmp_path):
+    present = [s for s in SPEC_STAGES if s != "review"]
+    root, cfg = setup_run(tmp_path, platform_stages=present, mode="spec")
+    assert run_gate(tmp_path, root, cfg, needs_for(SPEC_STAGES)) == 1
+    rows = {r["stage"]: r["status"] for r in result_of(tmp_path)["stages"]}
+    assert rows["review"] == "missing"
