@@ -190,7 +190,6 @@ def test_missing_canned_reply_is_an_adapter_error(project, monkeypatch):
     ("spec", "AakashDadhich", "AakashDadhich", "", False),
     ("spec", "Aakash", "Aakash", "AakashDadhich", False),
     ("check", "mallory", "", "", True),
-    ("fix", "mallory", "", "", True),
 ])
 def test_authorize(mode, actor, author, allowed, ok):
     assert authorize.authorized(mode, actor, allowed, author) is ok

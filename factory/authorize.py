@@ -1,6 +1,8 @@
 import argparse
 import sys
 
+from factory import fixloop
+
 GUARDED_MODES = ("spec", "change")
 
 
@@ -36,7 +38,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--actor", default="", help="login of the user who triggered the run")
     parser.add_argument("--author", default="", help="login of the issue author")
     parser.add_argument("--allowed", default="", help="comma-separated GitHub logins (repo variable FACTORY_ALLOWED_ACTORS)")
+    parser.add_argument("--issue", default="", help="fix mode: issue number from the dispatch payload")
+    parser.add_argument("--iteration", default="", help="fix mode: iteration from the dispatch payload")
+    parser.add_argument("--findings-run-id", default="", help="fix mode: run id from the dispatch payload")
     args = parser.parse_args(argv)
+    if args.mode == "fix":
+        try:
+            fixloop.parse_fix_inputs(args.issue, args.iteration, args.findings_run_id)
+        except fixloop.FixLoopError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
     reason = refusal(args.mode, args.actor, args.author, args.allowed)
     if reason:
         print(f"error: {reason}", file=sys.stderr)
