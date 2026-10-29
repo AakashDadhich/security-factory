@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/fix-reply.schema.json",
+  "title": "Fix reply",
+  "description": "What the coding agent reports after fixing the blocking findings. The edits are files on disk; this reply is the account of them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "fixes", "open_questions"],
+  "properties": {
+    "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "fixes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding", "status", "files", "note"],
+        "properties": {
+          "finding": {"type": "string", "minLength": 1, "maxLength": 80, "description": "The finding's fingerprint or id from blocking.json."},
+          "status": {"enum": ["fixed", "partial", "not-fixed"]},
+          "files": {"type": "array", "items": {"type": "string", "maxLength": 300}},
+          "note": {"type": "string", "maxLength": 500}
+        }
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {"type": "string", "maxLength": 500}
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "summary": "Replaced the string-concatenated query with a parameterised one and added a regression test.",
+  "fixes": [
+    {
+      "finding": "fp-sql-injection",
+      "status": "fixed",
+      "files": ["src/notes.ts", "test/notes.test.ts"],
+      "note": "The note id is now bound as a query parameter."
+    }
+  ],
+  "open_questions": []
+}

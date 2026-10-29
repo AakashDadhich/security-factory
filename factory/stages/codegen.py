@@ -19,7 +19,9 @@ from factory.rules import RulesError
 STAGE = "codegen-ai"
 FACTORY_ROOT = Path(__file__).resolve().parents[2]
 PROMPT = FACTORY_ROOT / "prompts" / "codegen.md"
+FIX_PROMPT = FACTORY_ROOT / "prompts" / "fix.md"
 REPLY_SCHEMA = FACTORY_ROOT / "schemas" / "codegen-reply.schema.json"
+FIX_REPLY_SCHEMA = FACTORY_ROOT / "schemas" / "fix-reply.schema.json"
 MAX_RETRIES = 2
 MAX_FILES = 300
 MAX_FILE_BYTES = 1024 * 1024
@@ -40,9 +42,11 @@ def git(repo: Path, *args: str, check: bool = True, data: bytes | None = None) -
     return result
 
 
-def ensure_branch(repo: Path, branch: str) -> str:
+def ensure_branch(repo: Path, branch: str, require_remote: bool = False) -> str:
     patch_policy.assert_push_target(branch)
     remote = git(repo, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}", check=False)
+    if require_remote and remote.returncode != 0:
+        raise CodegenError(f"fix mode needs the existing branch {branch}, but origin has none")
     if remote.returncode == 0:
         git(repo, "checkout", "-q", "-B", branch, f"refs/remotes/origin/{branch}")
     else:
@@ -207,15 +211,54 @@ def blocked_finding(rule_id: str, title: str, output: str):
     )
 
 
-def adapter_agent(stage: str, inputs: list[Path], reply_path: Path, work: Path) -> int:
+def adapter_agent(stage: str, inputs: list[Path], reply_path: Path, work: Path,
+                  prompt: Path = PROMPT, schema: Path = REPLY_SCHEMA) -> int:
     return adapter.run_stage(
-        stage=stage, prompt_path=PROMPT, inputs=inputs, schema_path=REPLY_SCHEMA, out_path=reply_path,
+        stage=stage, prompt_path=prompt, inputs=inputs, schema_path=schema, out_path=reply_path,
         workdir=work, allow_tools=list(READ_TOOLS), allow_write=True,
     )
 
 
+def fix_agent(stage: str, inputs: list[Path], reply_path: Path, work: Path) -> int:
+    return adapter_agent(stage, inputs, reply_path, work, FIX_PROMPT, FIX_REPLY_SCHEMA)
+
+
+def snapshot_security(repo: Path, dest: Path) -> tuple[Path, Path]:
+    source = repo / "security"
+    plan_path, tm_dir = dest / "plan.json", dest / "threat-model"
+    tm_dir.mkdir(parents=True)
+    if not (source / "plan.json").is_file():
+        raise CodegenError("the factory branch has no security/plan.json to fix against")
+    shutil.copyfile(source / "plan.json", plan_path)
+    for name in TRUSTED_TREE_FILES:
+        if not (source / name).is_file():
+            raise CodegenError(f"the factory branch has no security/{name}")
+        shutil.copyfile(source / name, tm_dir / name)
+    trees = source / "attack-trees"
+    if trees.is_dir():
+        shutil.copytree(trees, tm_dir / "attack-trees", symlinks=False, ignore=lambda d, names: [n for n in names if (Path(d) / n).is_symlink()])
+    return plan_path, tm_dir
+
+
+def run_fix(repo: Path, findings_path: Path, platform: str, issue: int, iteration: int, out: Path,
+            agent=fix_agent, hooks=precommit.run_hooks, github_output: Path | None = None) -> int:
+    if not findings_path.is_file():
+        raise CodegenError(f"{findings_path} not found; fix mode needs the blocking findings")
+    branch = patch_policy.branch_name(issue)
+    ensure_branch(repo, branch, require_remote=True)
+    held = Path(tempfile.mkdtemp(prefix="codegen-security-"))
+    try:
+        plan_path, tm_dir = snapshot_security(repo, held)
+        return run(repo, plan_path, tm_dir, platform, issue, iteration, out, agent, hooks, github_output,
+                   extra_inputs=[findings_path], stage_names=("fix", "fix-retry"), fixing=True)
+    finally:
+        shutil.rmtree(held, ignore_errors=True)
+
+
 def run(repo: Path, plan_path: Path, tm_dir: Path, platform: str, issue: int, iteration: int, out: Path,
-        agent=adapter_agent, hooks=precommit.run_hooks, github_output: Path | None = None) -> int:
+        agent=adapter_agent, hooks=precommit.run_hooks, github_output: Path | None = None,
+        extra_inputs: list[Path] | None = None, stage_names: tuple[str, str] = ("codegen", "codegen-fix"),
+        fixing: bool = False) -> int:
     out.mkdir(parents=True, exist_ok=True)
     findings.write(out / "findings.json", [])
     plan = json.loads(plan_path.read_text())
@@ -239,8 +282,8 @@ def run(repo: Path, plan_path: Path, tm_dir: Path, platform: str, issue: int, it
         touched: set[str] = set(trusted)
         feedback, rule_id, title = "", "", ""
         for attempt in range(MAX_RETRIES + 1):
-            stage = "codegen" if attempt == 0 else f"codegen-fix-{attempt}"
-            attempt_inputs = list(inputs)
+            stage = stage_names[0] if attempt == 0 else f"{stage_names[1]}-{attempt}"
+            attempt_inputs = [*inputs, *(extra_inputs or [])]
             if attempt:
                 feedback_file = feedback_dir / f"blocked-{attempt}.txt"
                 feedback_file.write_text(feedback[-FEEDBACK_LIMIT:])
@@ -280,7 +323,7 @@ def run(repo: Path, plan_path: Path, tm_dir: Path, platform: str, issue: int, it
                 feedback = result.output
                 print(feedback, file=sys.stderr)
                 continue
-            return finish(out, repo, patch, base_sha, branch, issue, iteration, platform, level, attempt + 1, reply_path)
+            return finish(out, repo, patch, base_sha, branch, issue, iteration, platform, level, attempt + 1, reply_path, fixing)
         findings.write(out / "findings.json", [blocked_finding(rule_id, title, feedback)])
         print(f"error: generated code still blocked after {MAX_RETRIES + 1} attempts ({rule_id})", file=sys.stderr)
         return 1
@@ -289,7 +332,7 @@ def run(repo: Path, plan_path: Path, tm_dir: Path, platform: str, issue: int, it
 
 
 def finish(out: Path, repo: Path, patch: str, base_sha: str, branch: str, issue: int, iteration: int,
-           platform: str, level: int, attempts: int, reply_path: Path) -> int:
+           platform: str, level: int, attempts: int, reply_path: Path, fixing: bool = False) -> int:
     (out / "changes.patch").write_text(patch)
     meta_path = Path(f"{reply_path}.meta.json")
     model = json.loads(meta_path.read_text()).get("model") if meta_path.is_file() else None
@@ -304,6 +347,9 @@ def finish(out: Path, repo: Path, patch: str, base_sha: str, branch: str, issue:
         "model": model,
         "files_changed": staged_names(repo),
     }
+    if fixing:
+        reply = json.loads(reply_path.read_text())
+        summary.update(mode="fix", account=reply["summary"], fixes=reply["fixes"], open_questions=reply["open_questions"])
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(f"codegen: {len(summary['files_changed'])} file(s) staged on {branch} after {attempts} attempt(s)")
     return 0
@@ -312,16 +358,24 @@ def finish(out: Path, repo: Path, patch: str, base_sha: str, branch: str, issue:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m factory.stages.codegen",
                                      description="Implement the plan on factory/<issue> and write a patch")
-    parser.add_argument("--plan", required=True, type=Path)
-    parser.add_argument("--threat-model", required=True, type=Path, dest="tm_dir")
+    parser.add_argument("--plan", type=Path)
+    parser.add_argument("--threat-model", type=Path, dest="tm_dir")
     parser.add_argument("--platform", required=True, choices=("web", "macos", "ios"))
     parser.add_argument("--issue", required=True, type=int)
     parser.add_argument("--iteration", default=0, type=int)
+    parser.add_argument("--fix-findings", type=Path, help="fix mode: blocking findings JSON; the plan and threat model come from the factory branch")
     parser.add_argument("--repo", default=Path("."), type=Path)
     parser.add_argument("--out", default=Path("out/codegen"), type=Path)
     parser.add_argument("--github-output", type=Path)
     args = parser.parse_args(argv)
+    if args.fix_findings is None and not (args.plan and args.tm_dir):
+        parser.error("--plan and --threat-model are required unless --fix-findings is given")
+    if args.fix_findings is not None and (args.plan or args.tm_dir):
+        parser.error("--fix-findings reads the plan and threat model from the factory branch; do not pass --plan or --threat-model")
     try:
+        if args.fix_findings is not None:
+            return run_fix(args.repo.resolve(), args.fix_findings.resolve(), args.platform, args.issue,
+                           args.iteration, args.out.resolve(), github_output=args.github_output)
         return run(args.repo.resolve(), args.plan.resolve(), args.tm_dir.resolve(), args.platform, args.issue,
                    args.iteration, args.out.resolve(), github_output=args.github_output)
     except (CodegenError, PolicyError, HookError, RulesError, FindingsError, OSError, KeyError, json.JSONDecodeError) as e:

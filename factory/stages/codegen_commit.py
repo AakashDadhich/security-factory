@@ -35,7 +35,9 @@ def git(repo: Path, *args: str, token: str | None = None, check: bool = True) ->
 
 
 def commit_message(issue: int, iteration: int) -> str:
-    return f"feat: implement #{issue} (factory iteration {iteration})"
+    kind = "fix" if iteration else "feat"
+    verb = "address findings on" if iteration else "implement"
+    return f"{kind}: {verb} #{issue} (factory iteration {iteration})"
 
 
 def refusal(out: Path, rule_id: str, title: str, detail: str) -> int:

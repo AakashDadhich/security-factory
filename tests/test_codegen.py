@@ -586,10 +586,10 @@ def test_gate_and_manifest_know_the_codegen_jobs():
     assert "--stage codegen-ai --stage codegen-commit" in manifest_step["run"]
 
 
-def test_app_private_key_only_reaches_codegen_commit_and_record():
+def test_app_private_key_only_reaches_codegen_commit_next_step_and_record():
     jobs = workflow_jobs()
     holders = {name for name, job in jobs.items() if "FACTORY_APP_PRIVATE_KEY" in json.dumps(job)}
-    assert holders == {"codegen-commit", "record"}
+    assert holders == {"codegen-commit", "next-step", "record"}
     assert "FACTORY_APP_PRIVATE_KEY" not in json.dumps(jobs["codegen-ai"])
     assert "FACTORY_APP_PRIVATE_KEY" in WORKFLOW.read_text()
 
@@ -599,7 +599,7 @@ def test_codegen_ai_job_has_read_only_token_and_no_write_credential():
     assert job["permissions"] == {"contents": "read"}
     text = json.dumps(job)
     assert "create-github-app-token" not in text and "GH_TOKEN" not in text and "github.token" not in text
-    assert job["needs"] == ["setup", "plan", "threat-model"]
+    assert job["needs"] == ["setup", "plan", "threat-model", "fix-input"]
     assert all(s.get("with", {}).get("persist-credentials") is False for s in job["steps"] if str(s.get("uses", "")).startswith("actions/checkout"))
 
 
@@ -630,7 +630,7 @@ def test_scanning_jobs_check_out_the_pushed_commit_and_wait_for_it():
         assert "needs.codegen-commit.result == 'success'" in condition and "inputs.mode != 'spec'" in condition
 
 
-def test_model_job_chain_has_no_status_functions():
+def test_model_job_chain_guards_status_functions_with_a_successful_setup():
     jobs = workflow_jobs()
     seen, stack = set(), ["codegen-ai"]
     while stack:
@@ -641,8 +641,9 @@ def test_model_job_chain_has_no_status_functions():
         needs = jobs[name].get("needs", [])
         stack += [needs] if isinstance(needs, str) else list(needs)
         condition = str(jobs[name].get("if", ""))
-        assert not any(f in condition for f in ("always()", "failure()", "cancelled()")), name
-    assert {"authorize", "setup", "plan", "threat-model"} <= seen
+        if any(f in condition for f in ("always()", "failure()", "cancelled()")):
+            assert "needs.setup.result == 'success'" in condition and "always()" not in condition, name
+    assert {"authorize", "setup", "plan", "threat-model", "fix-input"} <= seen
 
 
 def test_pre_commit_is_pinned_exactly():
@@ -705,3 +706,120 @@ def test_integration_real_hooks_block_insecure_code_and_secrets(tmp_path):
 
 def test_workflow_keeps_the_project_checkout_off_the_python_path():
     assert yaml.safe_load(WORKFLOW.read_text())["env"]["PYTHONSAFEPATH"] == "1"
+
+
+def test_commit_message_marks_fix_iterations():
+    assert codegen_commit.commit_message(3, 0) == "feat: implement #3 (factory iteration 0)"
+    assert codegen_commit.commit_message(3, 2) == "fix: address findings on #3 (factory iteration 2)"
+
+
+def test_fix_reply_fixture_matches_its_schema():
+    schema = json.loads((REPO / "schemas" / "fix-reply.schema.json").read_text())
+    reply = json.loads((FAKE / "fix.json").read_text())
+    import jsonschema
+    jsonschema.validate(reply, schema)
+    reply["fixes"][0]["status"] = "maybe"
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(reply, schema)
+
+
+class FixAgent(Agent):
+    def __call__(self, stage, inputs, reply_path, work):
+        code = super().__call__(stage, inputs, reply_path, work)
+        reply_path.write_text((FAKE / "fix.json").read_text())
+        self.calls[-1]["inputs"] = [p.name for p in inputs]
+        self.calls[-1]["findings"] = [json.loads(p.read_text()) for p in inputs if p.name == "blocking.json"]
+        return code
+
+
+@pytest.fixture
+def fixing(project, tmp_path):
+    assert run_codegen(project, Agent(GOOD)) == 0
+    repo = project["repo"]
+    sh(repo, "add", "-A")
+    sh(repo, "commit", "-q", "-m", "feat: implement #3")
+    sh(repo, "update-ref", "refs/remotes/origin/factory/3", "HEAD")
+    sh(repo, "checkout", "-q", "main")
+    sh(repo, "branch", "-q", "-D", "factory/3")
+    blocking = tmp_path / "in" / "blocking.json"
+    blocking.parent.mkdir()
+    blocking.write_text(json.dumps([{"fingerprint": "fp-sql-injection", "severity": "high", "title": "SQL injection"}]))
+    project.update(blocking=blocking, out=tmp_path / "fix-out")
+    return project
+
+
+def run_fix(project, agent, hooks=lambda repo, config: OK, issue=3, iteration=1):
+    return codegen.run_fix(project["repo"], project["blocking"], "web", issue, iteration, project["out"], agent=agent, hooks=hooks)
+
+
+FIX = writes({"src/notes.ts": "export const notes = ['safe'];\n"})
+
+
+def test_fix_mode_reads_security_from_the_branch_and_passes_only_the_findings(fixing):
+    agent = FixAgent(FIX)
+    assert run_fix(fixing, agent) == 0
+    (call,) = agent.calls
+    assert call["stage"] == "fix"
+    assert {"blocking.json", "CLAUDE.md", "plan.json", "threats.json"} <= set(call["inputs"])
+    assert call["findings"] == [[{"fingerprint": "fp-sql-injection", "severity": "high", "title": "SQL injection"}]]
+    summary = json.loads((fixing["out"] / "summary.json").read_text())
+    assert summary["mode"] == "fix" and summary["iteration"] == 1 and summary["branch"] == "factory/3"
+    assert summary["fixes"][0]["finding"] == "fp-sql-injection" and summary["fixes"][0]["status"] == "fixed"
+    assert summary["base_sha"] == sh(fixing["repo"], "rev-parse", "refs/remotes/origin/factory/3")
+    assert summary["files_changed"] == ["src/notes.ts"]
+    patch = (fixing["out"] / "changes.patch").read_text()
+    assert "+export const notes = ['safe'];" in patch and "security/" not in patch
+    assert patch_policy.inspect_patch(patch) == []
+    assert findings.load(fixing["out"] / "findings.json") == []
+
+
+def test_fix_mode_needs_the_existing_branch(project, tmp_path):
+    blocking = tmp_path / "blocking.json"
+    blocking.write_text("[]")
+    project["blocking"] = blocking
+    with pytest.raises(codegen.CodegenError, match="existing branch factory/3"):
+        run_fix(project, FixAgent(FIX))
+
+
+def test_fix_mode_needs_a_findings_file(fixing):
+    fixing["blocking"].unlink()
+    with pytest.raises(codegen.CodegenError, match="blocking findings"):
+        run_fix(fixing, FixAgent(FIX))
+
+
+def test_fix_mode_needs_security_files_on_the_branch(project, tmp_path):
+    sh(project["repo"], "update-ref", "refs/remotes/origin/factory/3", "HEAD")
+    blocking = tmp_path / "blocking.json"
+    blocking.write_text("[]")
+    project["blocking"] = blocking
+    with pytest.raises(codegen.CodegenError, match="security/plan.json"):
+        run_fix(project, FixAgent(FIX))
+
+
+def test_fix_mode_retries_use_their_own_stage_names(fixing):
+    results = iter([HookResult(True, "semgrep: still unsafe"), OK])
+    agent = FixAgent(writes({"src/notes.ts": "eval(x)\n"}), FIX)
+    assert run_fix(fixing, agent, hooks=lambda repo, config: next(results)) == 0
+    assert [c["stage"] for c in agent.calls] == ["fix", "fix-retry-1"]
+    assert "still unsafe" in agent.calls[1]["feedback"][0]
+
+
+def test_fix_mode_refuses_edits_to_the_security_folder(fixing):
+    agent = FixAgent(writes({"security/threats.json": "{}"}))
+    assert run_fix(fixing, agent) == 1
+    (item,) = findings.load(fixing["out"] / "findings.json")
+    assert item["rule_id"] == "patch-policy-blocked"
+
+
+def test_cli_rejects_mixing_fix_and_plan_arguments(capsys, tmp_path):
+    with pytest.raises(SystemExit):
+        codegen.main(["--platform", "web", "--issue", "3", "--fix-findings", str(tmp_path / "b.json"), "--plan", "p.json"])
+    with pytest.raises(SystemExit):
+        codegen.main(["--platform", "web", "--issue", "3"])
+
+
+def test_fix_prompt_forbids_silencing_and_deleting_tests():
+    text = (REPO / "prompts" / "fix.md").read_text()
+    assert "smallest correct change" in text
+    assert "Never silence a finding" in text and "Never delete, skip, loosen or rewrite a test" in text
+    assert "—" not in text
