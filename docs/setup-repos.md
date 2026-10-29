@@ -41,6 +41,8 @@ Paste the whole block into zsh or bash. It runs in a subshell, so the token vari
     gh secret set FACTORY_APP_PRIVATE_KEY --repo "$r" < "$PEM"
     gh variable set FACTORY_APP_ID --repo "$r" --body "$APP_ID"
     gh variable set FACTORY_ALLOWED_ACTORS --repo "$r" --body AakashDadhich
+    gh label create factory:spec --repo "$r" --force --color 5319e7 --description "Factory: plan and build this spec"
+    gh label create factory:change --repo "$r" --force --color 1d76db --description "Factory: plan a change to this project"
     gh api -X PUT "repos/$r/actions/permissions/workflow" \
       -f default_workflow_permissions=read -F can_approve_pull_request_reviews=false
     gh api -X PUT "repos/$r/actions/permissions/fork-pr-contributor-approval" \

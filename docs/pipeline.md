@@ -42,6 +42,22 @@ flowchart LR
 
 The same secret committed at the same path and line in several commits becomes one finding (the fingerprint ignores the commit).
 
+## Spec and change modes
+
+The project stub also triggers on `issues: [labeled]`. Label `factory:spec` runs mode `spec`, `factory:change` runs mode `change`; any other label skips the stub job. The stub passes the issue number as input `issue` and grants `issues: write`.
+
+`authorize` is the first job in every run. In `spec` and `change` it runs `python3 -m factory.authorize --mode <m> --actor <sender> --allowed <list>` and fails unless `github.event.sender.login` is in the repo variable `FACTORY_ALLOWED_ACTORS` (comma-separated, case-insensitive; an empty list refuses everyone). Both values reach the script through `env:`. In other modes it passes without a check. `setup` needs `authorize`, and every other job needs `setup`, so a refused run calls no model. The gate is skipped after a refusal in spec or change mode; in any other mode it still runs with `if: always()` and fails closed.
+
+### Plan stage
+
+Job `plan` (spec and change modes, `contents: read`, `issues: read`) fetches the issue with `gh issue view --json title,body` into `out/plan/issue.json` and runs `python -m factory.stages.plan --issue-file out/plan/issue.json --config .factory.yml --out out/plan` (or `make plan ISSUE_FILE=...`). The stage calls the adapter with read-only tools, `prompts/plan.md` and a reply schema built from `schemas/plan.schema.json` without the derived fields, then sets them itself:
+
+- `asvs_level`: the explicit `.factory.yml` value if set; otherwise 2, raised to 3 when `risk_rating` is `high` or `takes_payments` is true (D2),
+- `personal_data`: `stores_personal_data`, or any `data_handled` entry classified `personal` or `sensitive`,
+- `high_risk_features`: ids of features with risk `high`.
+
+Feature and requirement ids must be unique and every feature needs at least one abuse case that names it; otherwise the stage exits 2. The artifact `plan` holds `plan.json`, an empty `findings.json`, `issue.json`, the raw `reply.json` and its `.meta.json`. Job `plan-comment` (`issues: write`, no AI) renders `plan.json` with `python -m factory.plan_comment` into a short Markdown comment and posts it with `gh issue comment`. Model text is escaped in the comment: Markdown punctuation is backslash-escaped, and `@` mentions and links are broken with a zero-width space. `plan` is a matrix stage for spec and change modes only.
+
 ## DAST web stage
 
 Job `dast-web` (web only, required in the gate). `python -m factory.dast.harness up` creates the Docker network `factory-dast` with `--internal` (no route to the internet), builds the project's Dockerfile as `factory-app:<run id>`, and starts it detached with the alias `app`, `--read-only`, a tmpfs on `/tmp`, `--cap-drop ALL` and `no-new-privileges`. Only variables from `.env.example` are passed in. It then polls `http://app:<port><health_path>` from a pinned `curlimages/curl` container for up to 120 seconds and dumps the app logs on timeout.
@@ -52,9 +68,10 @@ Job `dast-web` (web only, required in the gate). `python -m factory.dast.harness
 
 | Input | Default | Meaning |
 |---|---|---|
-| `mode` | `check` | `spec`, `check`, `fix` or `change` (only `check` exists so far) |
+| `mode` | `check` | `spec`, `check`, `fix` or `change` (`check`, `spec` and `change` exist so far) |
 | `factory-ref` | `main` | Factory ref every job checks out into `.factory/` |
 | `config-path` | `.factory.yml` | Project config file |
+| `issue` | `0` | Issue number in spec and change modes, `0` otherwise |
 
 Secret `CLAUDE_CODE_OAUTH_TOKEN` is optional. Without it, `hello-ai` is skipped and the gate still runs. Fork PRs never receive it.
 
