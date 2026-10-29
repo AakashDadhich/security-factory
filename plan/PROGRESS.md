@@ -39,7 +39,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 08 | sast-semgrep | done |
 | 09 | sast-codeql-eslint-web | done |
 | 10 | deps-and-sbom | done |
-| 11 | gate-and-report | todo |
+| 11 | gate-and-report | done |
 | 12 | dast-zap-baseline | todo |
 | 13 | dast-zap-active-openapi | todo |
 | 14 | project-record | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 10 are done. Next in order is chunk 11 (gate-and-report); 12 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, and adds `--stage <name>` to the manifest step in `setup`. AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 11 are done. Next in order is chunk 12 (dast-zap-baseline); 13 and 15 can also plug in now. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). Pending owner decision: the `factory-gate` ruleset on `factory-test-web` (see `docs/required-check.md`). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -130,7 +130,18 @@ Chunks 00 to 10 are done. Next in order is chunk 11 (gate-and-report); 12 and 15
 - Deps and SBOM (chunk 10): `python -m factory.stages.deps_sbom --src . --out out/deps-sbom [--image <ref>]` (`make deps-sbom`). Pins: osv-scanner 2.7.0 (raw binary, `archive = "none"`), syft 1.55.0, grype 0.121.0. Runs `osv-scanner scan source -r --format sarif` (stdout captured; exit 1 = findings, 128 = no lockfiles, treated as clean) with `--x-exclude` for `.factory`, `node_modules`, `dist`, `build`, `Pods`, `.build` (without it OSV scans the factory checkout's fixtures). Syft writes `sbom.cdx.json` (CycloneDX 1.7, includes GitHub Actions `uses:` as components); Grype runs on that SBOM after `grype db update`; `tool-meta.json` holds `grype.db.built` from `grype db status -o json`. Output also has `osv-scanner.sarif`, `grype.sarif`.
 - Dedupe: OSV and Grype results merge when package name and version match and their vuln ids overlap (OSV's "also known as" aliases link GHSA to CVE); the merged finding has tool `osv-scanner+grype` and the higher severity. Results whose package can't be parsed from the message are never merged. Same vuln id at the same lockfile path collapses to one finding (fingerprint has no package). Paths are made relative to `--src`. `deps-sbom` is a required gate job; `--image` is implemented but the job does not pass it yet (chunk 12 builds the image). Template `templates/project/.github/dependabot.yml` added.
 
+- Gate (chunk 11): `python -m factory.gate --artifacts in --config .factory.yml --manifest in/setup/run-manifest.json --out out/gate [--needs <json>] [--policy policy.yml] [--today YYYY-MM-DD]`. Spec in `docs/pipeline.md`. `factory/stage_matrix.py` has `STAGES` (`Stage(name, platforms, modes, skippable)`) and `expected(platform, mode)`; a matrix stage can be skipped only if `skippable` lists a reason (`fork-pr`, `not-applicable`). Jobs in `needs` that are not in the matrix (`passthrough`, `hello-ai`) block on failure and may be skipped. Missing/failed stages become critical `stage-missing`/`stage-failed` check findings at `stages/<name>`, never suppressible. `policy.yml` holds `fail_on`; `.factory.yml` `policy.fail_on_extra` (medium, low, info) can only add. `suppressions:` entries are validated by the gate, not the schema (bad ones become medium `suppression-invalid-N` / `suppression-expired-N`).
+- Report format: `report.json` entries are findings plus `tools`, `stages`, `merged_fingerprints`, `suppressed`, `suppression`; the representative keeps its own valid `id` and `fingerprint`, so it is not a findings.json. `gate-result.json` has `status` (`pass`/`fail`), `counts` (unsuppressed), `suppressed`, `fail_on`, `blocking_fingerprints`, `mode`, `iteration`, `platform`, `stages`, `reasons`. Chunk 14 (record) and 21 (fix loop) should read these.
+- Gate job now checks out the project, has `security-events: write`, uploads artifact `gate` and uploads `merged.sarif` to code scanning with category `factory-gate` (`continue-on-error`, so fork PRs do not fail on it). The old `tests/test_gate_stub.py` and the `--optional` flag are gone.
+
 ## Session log
+
+### 2026-10-29, chunk 11 (gate-and-report)
+Added `factory/stage_matrix.py`, `policy.yml`, the real `factory/gate.py` (dedupe, policy, suppressions, fail closed, report/SARIF outputs), `tests/test_gate.py` (replaces the stub tests), the schema extension, the gate job changes, `docs/pipeline.md` Gate section and `docs/required-check.md`. Master session pushed the commits.
+- selftest run `40825901763`: `test`, `semgrep-rules`, `secrets-integration`, `macos-smoke`, `eslint-integration`, `lint-workflows` all `success`; `334 passed, 2 skipped`; 38 gate tests cover dedupe (Semgrep + CodeQL same line), policy tighten/loosen, suppression expiry, missing stage, web check matrix. Pass.
+- `factory-test-web` run `40825974576` (workflow_dispatch): all 9 jobs `success`; summary has the severity table (all 0), `**PASS**` and a Stages table with `deps-sbom`, `passthrough`, `hello-ai`, `sast-codeql`, `sast-eslint`, `sast-semgrep`, `secrets` all `ok`; artifact `gate` has 4 files; `merged.sarif` uploaded to code scanning. Pass.
+- Missing `sast-semgrep` artifact: simulated in `test_missing_stage_artifact_fails_closed` (critical `stage-missing`, gate exit 1), per the chunk's allowance. Pass.
+- Ruleset on `factory-test-web`: not applied, awaiting owner approval (GitHub settings change). Open.
 
 ### 2026-10-29, chunk 10 (deps-and-sbom)
 Added the three lock pins, `factory/stages/deps_sbom.py`, tests and fixtures, the `deps-sbom` job (gate needs it), `make deps-sbom` and the Dependabot template. First `factory-test-web` run failed the gate because OSV scanned the factory checkout's fixture SBOMs; fixed with `--x-exclude` and relative paths.
