@@ -6,18 +6,26 @@ from pathlib import Path
 
 from factory import adapter, findings, rules, tools
 from factory.adapter import READ_TOOLS, AdapterError
-from factory.threatmodel import pytm_runner
+from factory.threatmodel import attack_tree, pytm_runner
 from factory.threatmodel.pytm_runner import RunnerError
 
 STAGE = "threat-model"
 STRIDE_STAGE = "threat-model-stride"
 FACTORY_ROOT = Path(__file__).resolve().parents[2]
 STRIDE_PROMPT = FACTORY_ROOT / "prompts" / "threat-model-stride.md"
+LINDDUN_STAGE = "threat-model-linddun"
+LINDDUN_PROMPT = FACTORY_ROOT / "prompts" / "threat-model-linddun.md"
+ATTACK_TREE_STAGE = "threat-model-attack-tree"
+ATTACK_TREE_PROMPT = FACTORY_ROOT / "prompts" / "attack-tree.md"
+ATTACK_TREE_SCHEMA = "attack-tree.schema.json"
 ASVS = FACTORY_ROOT / "rules" / "asvs" / "asvs.json"
 THREATS_SCHEMA = "threats.schema.json"
 FRAMEWORK = "stride"
+LINDDUN_FRAMEWORK = "linddun"
+ATTACK_TREE_FRAMEWORK = "attack-tree"
 ID_PREFIX = "TM"
 STRIDE = ("spoofing", "tampering", "repudiation", "information-disclosure", "denial-of-service", "elevation-of-privilege")
+LINDDUN = ("linking", "identifying", "non-repudiation", "detecting", "data-disclosure", "unawareness", "non-compliance")
 LEVELS = {"low": 1, "medium": 2, "high": 3}
 FINDING_PATH = "security/threats.json"
 # Titles and mitigation texts are rendered into CLAUDE.md by factory.rules, which refuses
@@ -38,6 +46,14 @@ def asvs_ids() -> list[str]:
 
 
 def stride_reply_schema(names: list[str], asvs: list[str]) -> dict:
+    return reply_schema(STRIDE, names, asvs)
+
+
+def linddun_reply_schema(names: list[str], asvs: list[str]) -> dict:
+    return reply_schema(LINDDUN, names, asvs)
+
+
+def reply_schema(categories: tuple[str, ...], names: list[str], asvs: list[str]) -> dict:
     text = {"type": "string", "minLength": 1}
     level = {"enum": list(LEVELS)}
     return {
@@ -52,7 +68,7 @@ def stride_reply_schema(names: list[str], asvs: list[str]) -> dict:
                          "mitigations", "status"],
             "properties": {
                 "previous_id": {"type": ["string", "null"]},
-                "category": {"enum": list(STRIDE)},
+                "category": {"enum": list(categories)},
                 "element": {"enum": names},
                 "title": RULES_TEXT,
                 "description": text,
@@ -93,10 +109,10 @@ def _key(threat: dict) -> tuple:
     return threat["category"], threat["element"], " ".join(threat["title"].casefold().split())
 
 
-def _finalize(threat: dict, threat_id: str) -> dict:
+def _finalize(threat: dict, threat_id: str, framework: str) -> dict:
     result = {
         "id": threat_id,
-        "framework": FRAMEWORK,
+        "framework": framework,
         "category": threat["category"],
         "element": threat["element"],
         "title": threat["title"],
@@ -115,13 +131,18 @@ def _finalize(threat: dict, threat_id: str) -> dict:
     return result
 
 
-def merge(reply_threats: list[dict], previous: dict | None, model_version: str) -> dict:
+def merge(reply_threats: list[dict], previous: dict | None, model_version: str, framework: str = FRAMEWORK) -> dict:
+    return merge_with_ids(reply_threats, previous, model_version, framework)[0]
+
+
+def merge_with_ids(reply_threats: list[dict], previous: dict | None, model_version: str,
+                   framework: str = FRAMEWORK) -> tuple[dict, list[str]]:
     previous = previous or {"threats": [], "removed": []}
-    mine = [t for t in previous["threats"] if t["framework"] == FRAMEWORK]
-    others = [t for t in previous["threats"] if t["framework"] != FRAMEWORK]
+    mine = [t for t in previous["threats"] if t["framework"] == framework]
+    others = [t for t in previous["threats"] if t["framework"] != framework]
     by_id = {t["id"]: t for t in mine}
     next_number = 1 + max((_number(t["id"]) for t in previous["threats"] + previous["removed"]), default=0)
-    used, current = set(), []
+    used, current, ids = set(), [], []
     for threat in reply_threats:
         match = by_id.get(threat.get("previous_id") or "")
         if not match or match["id"] in used or (match["category"], match["element"]) != (threat["category"], threat["element"]):
@@ -132,11 +153,12 @@ def merge(reply_threats: list[dict], previous: dict | None, model_version: str) 
             threat_id = f"{ID_PREFIX}-{next_number:03d}"
             next_number += 1
         used.add(threat_id)
-        current.append(_finalize(threat, threat_id))
+        ids.append(threat_id)
+        current.append(_finalize(threat, threat_id, framework))
     removed = [t for t in mine if t["id"] not in used]
     removed_ids = {t["id"] for t in removed}
     history = [t for t in previous["removed"] if t["id"] not in used and t["id"] not in removed_ids]
-    return {"model_version": model_version, "threats": others + current, "removed": history + removed}
+    return {"model_version": model_version, "threats": others + current, "removed": history + removed}, ids
 
 
 def validate_threats(doc: dict, source: str) -> None:
@@ -158,10 +180,11 @@ def threat_findings(doc: dict) -> list[dict]:
     for t in doc["threats"]:
         if t["status"] != "open":
             continue
+        label = f"Attack tree {t['category']}" if t["framework"] == ATTACK_TREE_FRAMEWORK else _title(t["category"])
         mitigations = "\n".join(f"- {m['text']} (ASVS {', '.join(m['asvs_refs'])})" for m in t["mitigations"])
         result.append(findings.make_finding(
             stage=STAGE, tool=STAGE, source="ai-threat-model", rule_id=t["id"],
-            title=f"{_title(t['category'])}: {t['title']}", severity="info",
+            title=f"{label}: {t['title']}", severity="info",
             location={"path": FINDING_PATH, "start_line": None},
             description=(f"{t['description']}\n\nFramework {t['framework']}, element '{t['element']}', "
                          f"likelihood {t['likelihood']}, impact {t['impact']}, rated {t['severity']}."),
@@ -195,6 +218,78 @@ def load_plan(plan_path: Path) -> dict:
     return plan
 
 
+def linddun_pass(plan: dict, doc: dict, out: Path, inputs: list[Path], names: list[str], asvs: list[str],
+                 passes: dict, workdir: Path | None) -> tuple[int, dict]:
+    if not plan["personal_data"]:
+        passes["linddun"] = {"status": "skipped", "reason": "the plan does not handle personal data"}
+        return adapter.EXIT_OK, merge([], doc, doc["model_version"], LINDDUN_FRAMEWORK)
+    schema_path = out / "linddun-reply.schema.json"
+    schema_path.write_text(json.dumps(linddun_reply_schema(names, asvs), indent=2) + "\n")
+    reply_path = out / "linddun-reply.json"
+    code = adapter.run_stage(
+        stage=LINDDUN_STAGE, prompt_path=LINDDUN_PROMPT, inputs=inputs, schema_path=schema_path,
+        out_path=reply_path, workdir=workdir, allow_tools=list(READ_TOOLS),
+    )
+    if code != adapter.EXIT_OK:
+        return code, doc
+    passes["linddun"] = {"status": "ran", "reason": "the plan handles personal data"}
+    return adapter.EXIT_OK, merge(json.loads(reply_path.read_text())["threats"], doc, doc["model_version"], LINDDUN_FRAMEWORK)
+
+
+def _feature_stage(feature_id: str) -> str:
+    return f"{ATTACK_TREE_STAGE}-{feature_id.lower().replace('_', '-')}"
+
+
+def attack_tree_pass(plan: dict, doc: dict, out: Path, inputs: list[Path], names: list[str], asvs: list[str],
+                     passes: dict, workdir: Path | None) -> tuple[int, dict]:
+    feature_ids = plan["high_risk_features"]
+    if not feature_ids:
+        passes["attack-trees"] = {"status": "skipped", "reason": "the plan has no high-risk features"}
+        return adapter.EXIT_OK, merge([], doc, doc["model_version"], ATTACK_TREE_FRAMEWORK)
+    folder = out / "attack-trees"
+    folder.mkdir(parents=True, exist_ok=True)
+    features = {f["id"]: f for f in plan["features"]}
+    trees, items = [], []
+    for feature_id in feature_ids:
+        abuse_cases = [a for a in plan["abuse_cases"] if a["feature_id"] == feature_id]
+        if feature_id not in features or not abuse_cases:
+            raise ThreatModelError(f"high-risk feature {feature_id} needs an abuse case to root its attack tree")
+        feature_path = folder / f"{feature_id}.feature.json"
+        feature_path.write_text(json.dumps({"feature": features[feature_id], "abuse_cases": abuse_cases}, indent=2) + "\n")
+        goals = list(dict.fromkeys(a["attacker_goal"] for a in abuse_cases))
+        schema_path = folder / f"{feature_id}.reply.schema.json"
+        schema_path.write_text(json.dumps(attack_tree.reply_schema(goals, names, asvs), indent=2) + "\n")
+        reply_path = folder / f"{feature_id}.reply.json"
+        code = adapter.run_stage(
+            stage=_feature_stage(feature_id), prompt_path=ATTACK_TREE_PROMPT, inputs=[feature_path, *inputs],
+            schema_path=schema_path, out_path=reply_path, workdir=workdir, allow_tools=list(READ_TOOLS),
+        )
+        if code != adapter.EXIT_OK:
+            return code, doc
+        tree = {"feature_id": feature_id, "root": json.loads(reply_path.read_text())["root"]}
+        try:
+            attack_tree.check_shape(tree)
+        except attack_tree.AttackTreeError as e:
+            raise ThreatModelError(str(e)) from None
+        trees.append(tree)
+        items.extend(attack_tree.threat_items(tree))
+    doc, ids = merge_with_ids(items, doc, doc["model_version"], ATTACK_TREE_FRAMEWORK)
+    severities = {t["id"]: t["severity"] for t in doc["threats"]}
+    position = 0
+    for tree in trees:
+        count = len(attack_tree.leaves(tree))
+        numbered = attack_tree.with_leaf_ids(tree, ids[position:position + count])
+        position += count
+        errors = list(findings.validator(ATTACK_TREE_SCHEMA).iter_errors(numbered))
+        if errors:
+            raise ThreatModelError(f"attack tree {tree['feature_id']} does not match {ATTACK_TREE_SCHEMA}: {errors[0].message}")
+        feature_id = tree["feature_id"]
+        (folder / f"{feature_id}.json").write_text(json.dumps(numbered, indent=2, ensure_ascii=False) + "\n")
+        (folder / f"{feature_id}.md").write_text(attack_tree.render_markdown(numbered, features[feature_id]["name"], severities))
+    passes["attack-trees"] = {"status": "ran", "reason": "the plan has high-risk features", "features": list(feature_ids)}
+    return adapter.EXIT_OK, doc
+
+
 def run(plan_path: Path, out: Path, previous_dir: Path | None, python: Path, workdir: Path | None = None,
         timeout: int = pytm_runner.TIMEOUT_SECONDS, image: str | None = None) -> int:
     load_plan(plan_path)
@@ -206,11 +301,12 @@ def run(plan_path: Path, out: Path, previous_dir: Path | None, python: Path, wor
         return code
     model_version = hashlib.sha256((out / "tm.py").read_bytes()).hexdigest()
 
-    schema_path = out / "stride-reply.schema.json"
-    schema_path.write_text(json.dumps(stride_reply_schema(pytm_runner.element_names(model), asvs_ids()), indent=2) + "\n")
     inputs = [out / "elements.json", plan_path]
     if previous is not None:
         inputs.append(previous_dir / "threats.json")
+    names, asvs = pytm_runner.element_names(model), asvs_ids()
+    schema_path = out / "stride-reply.schema.json"
+    schema_path.write_text(json.dumps(stride_reply_schema(names, asvs), indent=2) + "\n")
     reply_path = out / "stride-reply.json"
     code = adapter.run_stage(
         stage=STRIDE_STAGE, prompt_path=STRIDE_PROMPT, inputs=inputs, schema_path=schema_path,
@@ -219,6 +315,17 @@ def run(plan_path: Path, out: Path, previous_dir: Path | None, python: Path, wor
     if code != adapter.EXIT_OK:
         return code
     doc = merge(json.loads(reply_path.read_text())["threats"], previous, model_version)
+    passes = {"stride": {"status": "ran"}}
+
+    plan = load_plan(plan_path)
+    code, doc = linddun_pass(plan, doc, out, inputs, names, asvs, passes, workdir)
+    if code != adapter.EXIT_OK:
+        return code
+    code, doc = attack_tree_pass(plan, doc, out, inputs, names, asvs, passes, workdir)
+    if code != adapter.EXIT_OK:
+        return code
+    (out / "passes.json").write_text(json.dumps(passes, indent=2) + "\n")
+
     validate_threats(doc, "threats.json")
     (out / "threats.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
     try:
@@ -227,10 +334,12 @@ def run(plan_path: Path, out: Path, previous_dir: Path | None, python: Path, wor
         raise ThreatModelError(f"threats.json cannot feed the rules renderer: {e}") from None
     stage_findings = threat_findings(doc)
     findings.write(out / "findings.json", stage_findings)
-    counts = {c: sum(1 for t in doc["threats"] if t["category"] == c) for c in STRIDE}
+    counts = {c: sum(1 for t in doc["threats"] if t["framework"] == FRAMEWORK and t["category"] == c) for c in STRIDE}
     print(f"wrote {out / 'threats.json'}: {len(doc['threats'])} threats, {len(doc['removed'])} removed, "
           f"{len(stage_findings)} open as info findings")
     print("by category: " + ", ".join(f"{c} {n}" for c, n in counts.items()))
+    for name, info in passes.items():
+        print(f"pass {name}: {info['status']}" + (f" ({info['reason']})" if info.get("reason") else ""))
     return 0
 
 
