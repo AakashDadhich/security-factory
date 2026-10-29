@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from factory import config as config_mod
-from factory import findings, manifest as manifest_mod, stage_matrix
+from factory import eligibility, findings, manifest as manifest_mod, stage_matrix
 from factory.config import ConfigError
 from factory.findings import SEVERITIES, FindingsError
 from factory.manifest import ManifestError
@@ -16,6 +16,7 @@ from factory.manifest import ManifestError
 POLICY_PATH = Path(__file__).resolve().parent.parent / "policy.yml"
 SETUP_JOB = "setup"
 AUTHORIZE_JOB = "authorize"
+ELIGIBILITY_JOB = "ai-eligible"
 MAX_SUPPRESSION_DAYS = 90
 GATE_STAGE = "gate"
 STAGE_RULES = ("stage-missing", "stage-failed")
@@ -109,10 +110,22 @@ def collect(artifacts_dir: str | Path) -> tuple[dict[str, list], dict[str, str]]
     return by_stage, errors
 
 
-def stage_rows(expected: list[stage_matrix.Stage], needs: dict | None, by_stage: dict, errors: dict) -> list[dict]:
+def ai_skip_reason(needs: dict | None) -> str | None:
+    job = (needs or {}).get(ELIGIBILITY_JOB)
+    outputs = job.get("outputs") if isinstance(job, dict) else None
+    if not isinstance(job, dict) or job.get("result") != "success" or not isinstance(outputs, dict):
+        return None
+    reason = outputs.get("reason")
+    if outputs.get("run_ai") == "false" and reason in eligibility.REASONS:
+        return reason
+    return None
+
+
+def stage_rows(expected: list[stage_matrix.Stage], needs: dict | None, by_stage: dict, errors: dict,
+               mode: str | None = None) -> list[dict]:
     expected_by_name = {s.name: s for s in expected}
     names = set(expected_by_name) | {n for n in (needs or {}) if n != SETUP_JOB} | set(by_stage) | set(errors)
-    names -= {SETUP_JOB, AUTHORIZE_JOB, GATE_STAGE}
+    names -= {SETUP_JOB, AUTHORIZE_JOB, ELIGIBILITY_JOB, GATE_STAGE}
     rows = []
     for name in sorted(names):
         job = (needs or {}).get(name)
@@ -122,6 +135,8 @@ def stage_rows(expected: list[stage_matrix.Stage], needs: dict | None, by_stage:
         if needs is not None and result == "skipped":
             if stage is None or stage.skippable:
                 row.update(status="skipped", detail=stage.skippable[0] if stage else "not-applicable")
+            elif stage.ai and mode == "check" and ai_skip_reason(needs):
+                row.update(status="skipped", detail=ai_skip_reason(needs))
             else:
                 row.update(status="missing", detail="job was skipped but the stage is required")
         elif needs is not None and name in needs and result != "success":
@@ -251,6 +266,8 @@ def render_markdown(result: dict, rows: list[dict], merged: list[dict]) -> str:
     lines += ["| Severity | Count |", "|---|---|"] + [f"| {s} | {result['counts'][s]} |" for s in SEVERITIES]
     if result["suppressed"]:
         lines += ["", f"{result['suppressed']} finding(s) suppressed (listed below)."]
+    if result.get("ai_skipped"):
+        lines += ["", f"AI stages skipped: {result['ai_skipped']}"]
     lines += ["", "### Stages", "", "| Stage | Status | Detail |", "|---|---|---|"]
     lines += [f"| {r['stage']} | {r['status']} | {_cell(r['detail'])} |" for r in rows] or ["| (none) | | |"]
     live = [f for f in merged if not f["suppressed"]]
@@ -324,13 +341,14 @@ def run(*, artifacts: str, config_path: str, manifest_path: str | None, needs: d
         except ManifestError as e:
             extra_reasons.append(f"run manifest unusable: {str(e).splitlines()[0]}")
     by_stage, errors = collect(artifacts)
-    rows = stage_rows(stage_matrix.expected(platform, mode), needs, by_stage, errors)
+    rows = stage_rows(stage_matrix.expected(platform, mode), needs, by_stage, errors, mode)
     active, suppression_problems = check_suppressions(cfg.get("suppressions"), today, config_path)
     everything = [f for items in by_stage.values() for f in items] + problem_findings(rows) + suppression_problems
     merged = dedupe(everything)
     apply_suppressions(merged, active)
     result = evaluate(merged, rows, fail_on, extra_reasons)
-    result.update(mode=mode, iteration=iteration, platform=platform)
+    ai_reason = ai_skip_reason(needs) if mode == "check" else None
+    result.update(mode=mode, iteration=iteration, platform=platform, ai_skipped=ai_reason if any(r["status"] == "skipped" and r["detail"] == ai_reason for r in rows) else None)
     return result, rows, merged
 
 

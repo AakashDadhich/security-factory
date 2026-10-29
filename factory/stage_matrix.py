@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from factory.eligibility import REASONS as AI_SKIP_REASONS
+
 PLATFORMS = ("web", "macos", "ios")
 MODES = ("spec", "check", "fix", "change")
 SKIP_REASONS = ("fork-pr", "not-applicable")
@@ -11,14 +13,15 @@ class Stage:
     platforms: tuple[str, ...] = PLATFORMS
     modes: tuple[str, ...] = MODES
     skippable: tuple[str, ...] = ()
+    ai: bool = False
 
 
 STAGES = (
     Stage("plan", modes=("spec", "change")),
-    Stage("threat-model", modes=("spec", "change")),
+    Stage("threat-model", modes=("spec", "change", "check"), ai=True),
     Stage("codegen-ai", modes=("spec", "change", "fix")),
     Stage("codegen-commit", modes=("spec", "change", "fix")),
-    Stage("review", modes=("spec", "change", "fix")),
+    Stage("review", modes=("spec", "change", "fix", "check"), ai=True),
     Stage("secrets"),
     Stage("sast-semgrep"),
     Stage("sast-codeql", platforms=("web",)),

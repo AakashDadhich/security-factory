@@ -422,10 +422,10 @@ def test_threat_model_job_is_wired_with_least_privilege():
     assert "--stage threat-model" in setup_steps
 
 
-def test_threat_model_is_a_spec_and_change_stage_only():
+def test_threat_model_is_not_a_fix_mode_stage():
     for mode in stage_matrix.MODES:
         names = [s.name for s in stage_matrix.expected("web", mode)]
-        assert ("threat-model" in names) == (mode in ("spec", "change"))
+        assert ("threat-model" in names) == (mode in ("spec", "change", "check"))
 
 
 def test_real_pytm_tool_resolves_to_its_venv():
