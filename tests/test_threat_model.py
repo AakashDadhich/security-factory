@@ -44,7 +44,8 @@ def project(tmp_path, monkeypatch):
     root = tmp_path / "project"
     root.mkdir()
     plan_reply = json.loads((FAKE / "plan.json").read_text())
-    (root / "plan.json").write_text(json.dumps(plan.finalize(plan_reply, None)))
+    stride_only = plan.finalize(plan_reply, None) | {"personal_data": False, "high_risk_features": []}
+    (root / "plan.json").write_text(json.dumps(stride_only))
     return root
 
 

@@ -1,0 +1,77 @@
+{
+  "root": {
+    "goal": "Take over an account.",
+    "type": "or",
+    "children": [
+      {
+        "goal": "Guess or reuse a valid password",
+        "type": "and",
+        "children": [
+          {
+            "goal": "Obtain leaked email and password pairs",
+            "type": "or",
+            "children": [],
+            "mitigations": [
+              {
+                "text": "Check new passwords against breached password lists.",
+                "asvs_refs": [
+                  "V6.2.12"
+                ]
+              }
+            ],
+            "previous_id": null,
+            "element": "Internet",
+            "description": "Pairs from other breaches are collected for the same users.",
+            "likelihood": "medium",
+            "impact": "high"
+          },
+          {
+            "goal": "Replay the pairs against the sign-in endpoint",
+            "type": "or",
+            "children": [],
+            "mitigations": [
+              {
+                "text": "Rate limit sign-in attempts per account and per IP.",
+                "asvs_refs": [
+                  "V6.3.1"
+                ]
+              }
+            ],
+            "previous_id": null,
+            "element": "Sign-in request",
+            "description": "Automated requests try each pair until one works.",
+            "likelihood": "high",
+            "impact": "high"
+          }
+        ],
+        "mitigations": [
+          {
+            "text": "Offer a second sign-in factor.",
+            "asvs_refs": [
+              "V6.3.3"
+            ]
+          }
+        ]
+      },
+      {
+        "goal": "Steal a session cookie",
+        "type": "or",
+        "children": [],
+        "mitigations": [
+          {
+            "text": "Set Secure, HttpOnly and SameSite on the session cookie.",
+            "asvs_refs": [
+              "V3.3.1"
+            ]
+          }
+        ],
+        "previous_id": null,
+        "element": "Notes response",
+        "description": "A cookie without the Secure or HttpOnly flag is read by a script or sniffed.",
+        "likelihood": "medium",
+        "impact": "high"
+      }
+    ],
+    "mitigations": []
+  }
+}

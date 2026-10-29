@@ -1,0 +1,64 @@
+{
+  "threats": [
+    {
+      "previous_id": null,
+      "category": "linking",
+      "element": "Notes DB",
+      "title": "Notes linkable to a person across exports",
+      "description": "Notes are stored with the account email as the key, so a leaked table or backup ties every note to a named person.",
+      "likelihood": "medium",
+      "impact": "high",
+      "mitigations": [
+        {
+          "text": "Key notes by an opaque user id, not by email address.",
+          "asvs_refs": [
+            "V14.2.1"
+          ]
+        },
+        {
+          "text": "Keep email addresses in a separate table from note text.",
+          "asvs_refs": [
+            "V14.1.1"
+          ]
+        }
+      ],
+      "status": "open"
+    },
+    {
+      "previous_id": null,
+      "category": "unawareness",
+      "element": "Sign-in request",
+      "title": "Users not told what is kept about them",
+      "description": "The sign-in flow collects an email address and sets a cookie without telling the user what is stored or for how long.",
+      "likelihood": "medium",
+      "impact": "medium",
+      "mitigations": [
+        {
+          "text": "Show a privacy notice listing stored data and retention before sign-up.",
+          "asvs_refs": [
+            "V14.1.2"
+          ]
+        }
+      ],
+      "status": "open"
+    },
+    {
+      "previous_id": null,
+      "category": "non-compliance",
+      "element": "Store note",
+      "title": "Notes cannot be deleted with the account",
+      "description": "Deleting an account leaves its notes behind, which breaks deletion requests.",
+      "likelihood": "high",
+      "impact": "medium",
+      "mitigations": [
+        {
+          "text": "Delete or anonymise all notes when an account is deleted.",
+          "asvs_refs": [
+            "V14.2.7"
+          ]
+        }
+      ],
+      "status": "open"
+    }
+  ]
+}
