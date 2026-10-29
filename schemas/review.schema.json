@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AakashDadhich/security-factory/schemas/review.schema.json",
+  "title": "Security review reply",
+  "description": "What the second-agent security review returns for a diff.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title", "severity", "path", "start_line", "end_line", "cwe", "asvs_refs", "threat_ids",
+        "description", "remediation", "confidence"
+      ],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+        "path": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "start_line": { "type": "integer", "minimum": 1 },
+        "end_line": { "type": "integer", "minimum": 1 },
+        "cwe": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 5,
+          "items": { "type": "string", "pattern": "^CWE-[1-9][0-9]*$" }
+        },
+        "asvs_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 10,
+          "items": { "type": "string", "pattern": "^V[0-9]+\\.[0-9]+\\.[0-9]+$" }
+        },
+        "threat_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 10,
+          "items": { "type": "string", "pattern": "^TM-[0-9]{3,}$" }
+        },
+        "description": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "remediation": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "confidence": { "enum": ["low", "medium", "high"] }
+      }
+    }
+  }
+}

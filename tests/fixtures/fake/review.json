@@ -1,0 +1,17 @@
+{
+  "findings": [
+    {
+      "title": "SQL injection in note lookup",
+      "severity": "high",
+      "path": "src/notes.ts",
+      "start_line": 50,
+      "end_line": 50,
+      "cwe": ["CWE-89"],
+      "asvs_refs": ["V1.2.4"],
+      "threat_ids": ["TM-001"],
+      "description": "The note id from the URL is concatenated into the SQL string, so a crafted id changes the query.",
+      "remediation": "Use a parameterised query.",
+      "confidence": "high"
+    }
+  ]
+}
