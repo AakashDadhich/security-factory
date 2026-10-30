@@ -179,6 +179,12 @@ jobs:
         run: |
           mkdir -p out/plan
           gh issue view "$ISSUE" --repo "$REPO" --json title,body > out/plan/issue.json
+      - name: read the project record
+        if: inputs.mode == 'change'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: python -m factory.record read --repo "$REPO" --out in/record
       - name: plan stage
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -186,7 +192,13 @@ jobs:
           FACTORY_CLAUDE_TIMEOUT: "600"
           FACTORY_CLAUDE_MAX_TURNS: "10"
           CONFIG_PATH: ${{ inputs.config-path }}
-        run: python -m factory.stages.plan --issue-file out/plan/issue.json --config "$CONFIG_PATH" --out out/plan
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$MODE" = change ]; then
+            python -m factory.stages.plan --issue-file out/plan/issue.json --config "$CONFIG_PATH" --out out/plan --current-plan security/plan.json --record in/record
+          else
+            python -m factory.stages.plan --issue-file out/plan/issue.json --config "$CONFIG_PATH" --out out/plan
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -813,6 +825,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      issues: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -865,6 +879,27 @@ jobs:
           python -m factory.record write --repo "$REPO" --artifacts in
           --event "$EVENT" --ref "$REF" --default-branch "$DEFAULT_BRANCH"
           --run-id "$RUN_ID" --commit "$COMMIT"
+      - name: comment the dependency changes on the merged issue
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.gate.result == 'success'
+        continue-on-error: true
+        id: sbom-note
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          mkdir -p in/record out/sbom-note
+          python -m factory.record read --repo "$REPO" --out in/record
+          gh api "repos/$REPO/commits/$COMMIT/pulls" > in/record/pulls.json
+          python -m factory.sbomnote --pulls in/record/pulls.json --diff in/record/latest/sbom-diff.json --commit "$COMMIT" --out out/sbom-note/comment.md --github-output "$GITHUB_OUTPUT"
+      - name: post the dependency changes
+        if: steps.sbom-note.outputs.issue != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ steps.sbom-note.outputs.issue }}
+        run: gh issue comment "$ISSUE" --repo "$REPO" --body-file out/sbom-note/comment.md
 
   next-step:
     needs: gate
@@ -911,6 +946,19 @@ jobs:
           ITERATION: ${{ inputs.iteration }}
           RUN_ID: ${{ github.run_id }}
         run: python -m factory.fixloop dispatch --repo "$REPO" --issue "$ISSUE" --iteration "$ITERATION" --run-id "$RUN_ID"
+      - name: threat model diff
+        if: steps.decide.outputs.action == 'done'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ inputs.issue }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          mkdir -p in/threats out/next-step
+          gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/security/threats.json?ref=factory/$ISSUE" > in/threats/head.json
+          gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/security/threats.json?ref=$DEFAULT_BRANCH" > in/threats/base.json || rm -f in/threats/base.json
+          python -m factory.threatmodel.diff --base in/threats/base.json --head in/threats/head.json --out-md out/next-step/threat-diff.md
       - name: comment on the issue
         if: steps.decide.outputs.action == 'stop' || steps.decide.outputs.action == 'done'
         env:
@@ -920,7 +968,7 @@ jobs:
           KIND: ${{ steps.decide.outputs.action }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          python -m factory.fixloop comment --kind "$KIND" --issue "$ISSUE" --report in/gate/report.md --run-url "$RUN_URL" --out out/next-step/comment.md
+          python -m factory.fixloop comment --kind "$KIND" --issue "$ISSUE" --report in/gate/report.md --run-url "$RUN_URL" --extra out/next-step/threat-diff.md --out out/next-step/comment.md
           gh issue comment "$ISSUE" --repo "$REPO" --body-file out/next-step/comment.md
       - name: ask for a human
         if: steps.decide.outputs.action == 'stop'

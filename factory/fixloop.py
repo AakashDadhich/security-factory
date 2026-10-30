@@ -127,7 +127,7 @@ def defang(text: str) -> str:
     return re.sub(r"(?i)\bwww\.", lambda m: m.group(0)[:3] + ZWSP + ".", text)
 
 
-def render_comment(kind: str, issue: int, report: str, run_url: str | None = None) -> str:
+def render_comment(kind: str, issue: int, report: str, run_url: str | None = None, extra: str = "") -> str:
     if kind == "stop":
         lines = [MARKER, f"## {STOP_HEADING}", "",
                  f"The gate still fails on `factory/{issue}`. A person needs to look at the findings below.", ""]
@@ -138,6 +138,8 @@ def render_comment(kind: str, issue: int, report: str, run_url: str | None = Non
     if run_url:
         lines += [f"Run: {run_url}", ""]
     body = defang(report.strip())
+    if extra.strip():
+        body = defang(extra.strip()) + "\n\n" + body
     room = COMMENT_LIMIT - len("\n".join(lines)) - 80
     if len(body) > room:
         body = body[:room].rstrip() + "\n\n(report truncated, see the gate artifact)"
@@ -168,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--issue", required=True)
     c.add_argument("--report", required=True, type=Path)
     c.add_argument("--run-url")
+    c.add_argument("--extra", type=Path, help="a Markdown file placed before the report, such as the threat model diff")
     c.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
@@ -188,7 +191,8 @@ def main(argv: list[str] | None = None) -> int:
             send_dispatch(args.repo, body)
             print(f"fix loop: dispatched {EVENT_TYPE} {json.dumps(body['client_payload'])}")
         else:
-            text = render_comment(args.kind, positive_int(args.issue, "issue"), args.report.read_text(), args.run_url)
+            extra = args.extra.read_text() if args.extra and args.extra.is_file() else ""
+            text = render_comment(args.kind, positive_int(args.issue, "issue"), args.report.read_text(), args.run_url, extra)
             args.out.parent.mkdir(parents=True, exist_ok=True)
             args.out.write_text(text)
     except (FixLoopError, OSError) as e:
