@@ -175,3 +175,11 @@ jobs:
       - run: python -m factory.tools list
       - run: python -m factory.platform_check ensure-make
       - run: make ensure-make
+      - name: install the macOS tools from the lock
+        run: python -m factory.tools install xcode xcodegen swiftlint
+      - name: tools run
+        run: |
+          xcodegen --version
+          swiftlint version
+          ls "$HOME/.factory/xcodegen/xcodegen/share/xcodegen/SettingPresets" | head -3
+          xcodebuild -version
