@@ -99,4 +99,5 @@ def test_codeql_swift_findings_are_converted_on_linux_after_the_traced_job():
     assert "factory.sarif" in json.dumps(stage)
     assert "factory.sarif" not in json.dumps(j["codeql-swift-analyze"])
     uploads = [s["with"]["name"] for s in j["codeql-swift-analyze"]["steps"] if "upload-artifact" in s.get("uses", "")]
-    assert uploads == ["codeql-swift-sarif"]
+    assert uploads == ["codeql-swift-analyze"]
+    assert any("findings.json" in s.get("run", "") for s in j["codeql-swift-analyze"]["steps"])

@@ -34,6 +34,14 @@ def apply_severity(items: list, security_rules: set[str]) -> list:
     return findings.validate(items)
 
 
+def render_config(config: Path, src: Path, dest: Path) -> Path:
+    data = yaml.safe_load(config.read_text())
+    data["excluded"] = [str((src.resolve() / name)) for name in data.get("excluded", [])]
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(yaml.safe_dump(data, sort_keys=False))
+    return dest
+
+
 def swiftlint_command(config: Path, binary: str = "swiftlint") -> list[str]:
     return [binary, "lint", "--config", str(config), "--reporter", "sarif", "--quiet"]
 
@@ -41,7 +49,8 @@ def swiftlint_command(config: Path, binary: str = "swiftlint") -> list[str]:
 def run_swiftlint(src: Path, report: Path, config: Path = CONFIG, binary: str = "swiftlint", runner=None) -> None:
     runner = runner or subprocess.run
     report.parent.mkdir(parents=True, exist_ok=True)
-    cmd = swiftlint_command(config.resolve(), binary)
+    rendered = render_config(config, src, report.parent / "swiftlint.yml")
+    cmd = swiftlint_command(rendered.resolve(), binary)
     print("+ " + " ".join(cmd), flush=True)
     try:
         with report.open("w") as handle:

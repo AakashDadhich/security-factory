@@ -111,6 +111,23 @@ def test_userdefaults_rule_ignores_harmless_lines(line):
     assert not regex("userdefaults_secret_key").search(line)
 
 
+def test_rendered_config_excludes_absolute_project_paths(tmp_path):
+    src = tmp_path / "proj"
+    src.mkdir()
+    rendered = stage.render_config(CONFIG, src, tmp_path / "out" / "swiftlint.yml")
+    data = yaml.safe_load(rendered.read_text())
+    assert str(src.resolve() / ".factory") in data["excluded"]
+    assert all(Path(p).is_absolute() for p in data["excluded"])
+    assert set(data["custom_rules"]) == set(yaml.safe_load(CONFIG.read_text())["custom_rules"])
+
+
+def test_run_passes_the_rendered_config_to_swiftlint(tmp_path):
+    runner = fake_runner(0, (FIXTURES / "swiftlint.sarif").read_text())
+    stage.run(tmp_path, tmp_path / "out", runner=runner)
+    cmd = runner.calls[0][0]
+    assert cmd[cmd.index("--config") + 1] == str((tmp_path / "out" / "swiftlint.yml").resolve())
+
+
 def test_command_uses_the_factory_config_and_the_sarif_reporter():
     cmd = stage.swiftlint_command(CONFIG)
     assert cmd[:2] == ["swiftlint", "lint"]
