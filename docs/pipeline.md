@@ -246,3 +246,14 @@ In check mode the scanners wait for `review` only so the review finishes first; 
 - Suppressions: `.factory.yml` `suppressions:` entries with `fingerprint`, `reason`, `expires` (ISO date, today to 90 days ahead) and `approved_by`. A suppression matches any fingerprint that was merged into a finding. Expired or malformed entries are ignored and reported as `medium` findings (`suppression-expired-N`, `suppression-invalid-N`). Suppressed findings stay in the report, marked `suppressed`.
 - Outputs in `out/gate/`: `report.json`, `report.md` (also appended to `$GITHUB_STEP_SUMMARY`), `gate-result.json` (`status`, `counts`, `suppressed`, `blocking_fingerprints`, `mode`, `iteration`, `stages`, `reasons`) and `merged.sarif`. The job uploads the folder as artifact `gate` and the SARIF to code scanning with category `factory-gate` (the upload is allowed to fail, as fork PRs have no `security-events` write access).
 - Exits 1 when `status` is `fail`.
+
+
+## macOS stages
+
+For `platform: macos` the scanners are `secrets`, `sast-semgrep` (Swift rule sets), `deps-sbom`, plus three jobs on `macos-15`, each with `contents: read` (`sast-codeql-swift` also `security-events: write`). None sees the Claude token or the App key. The web-only stages (`sast-codeql`, `sast-eslint`, `dast-web`) are not in the macOS matrix and are skipped.
+
+- `apple-build`: `python -m factory.tools install xcode xcodegen`, then `python -m factory.stages.apple_build run`. It runs `xcodegen generate --spec <apple.project_spec>`, copies a root `Package.resolved` into the generated project's workspace and passes `-onlyUsePackageVersionsFromResolvedFile`, then `xcodebuild -project <name>.xcodeproj -scheme <apple.scheme> -configuration Release -derivedDataPath build/apple CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual build`. Ad-hoc signing (`-`) still embeds the entitlements. It expects exactly one `.app`, zips it with `ditto -c -k --keepParent` and uploads artifact `apple-build` (`<App>.app.zip` and an empty `findings.json`).
+- `sast-swiftlint`: `python -m factory.stages.swiftlint --src . --out out/sast-swiftlint`. Runs the pinned SwiftLint with `tools/swiftlint/.swiftlint.yml` only (the project's own config is ignored) and the SARIF reporter. Exit 0 and 2 (error-level violations) are results; anything else fails the stage. Severity is by rule, not by SwiftLint's level: the `custom_rules` in the factory config (`print_of_secret`, `userdefaults_secret_key`) are `high`, every other rule is `low`.
+- `sast-codeql-swift`: CodeQL `languages: swift`, `build-mode: manual`, `security-extended`. The manual build is `python -m factory.stages.apple_build build --derived build/codeql` (the same xcodegen and xcodebuild command builders as `apple-build`, in a separate derived data folder). The SARIF `swift.sarif` is converted with `python -m factory.sarif`.
+
+`deps-sbom` needs no macOS runner: OSV-Scanner and Syft both read a committed `Package.resolved`.
