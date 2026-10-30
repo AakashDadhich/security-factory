@@ -35,6 +35,30 @@
         },
         "dockerfile": {
           "$ref": "#/$defs/relative_path"
+        },
+        "auth": {
+          "description": "Optional test login for authenticated ZAP scans. The credentials come from .env.example, never from real accounts.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "login_url", "username_field", "password_field", "username_env", "password_env"],
+          "anyOf": [
+            {"required": ["logged_in_regex"]},
+            {"required": ["logged_out_regex"]}
+          ],
+          "properties": {
+            "type": {"enum": ["form", "json"]},
+            "login_url": {
+              "description": "Path on the app, for example /login.",
+              "type": "string",
+              "pattern": "^/(?!/)[^\\s]*$"
+            },
+            "username_field": {"$ref": "#/$defs/field_name"},
+            "password_field": {"$ref": "#/$defs/field_name"},
+            "username_env": {"$ref": "#/$defs/env_name"},
+            "password_env": {"$ref": "#/$defs/env_name"},
+            "logged_in_regex": {"type": "string", "minLength": 1, "maxLength": 200},
+            "logged_out_regex": {"type": "string", "minLength": 1, "maxLength": 200}
+          }
         }
       }
     },
@@ -81,6 +105,14 @@
     }
   ],
   "$defs": {
+    "field_name": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.\\[\\]-]{1,64}$"
+    },
+    "env_name": {
+      "type": "string",
+      "pattern": "^[A-Z_][A-Z0-9_]{0,63}$"
+    },
     "relative_path": {
       "description": "A path inside the repo: not absolute, no '..' segments, no whitespace other than spaces.",
       "type": "string",

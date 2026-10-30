@@ -5,6 +5,7 @@ env:
         - "{{TARGET}}"
       includePaths:
         - "{{TARGET}}.*"
+{{AUTH_CONTEXT}}
   parameters:
     failOnError: true
     failOnWarning: false
@@ -14,6 +15,7 @@ jobs:
   - type: spider
     parameters:
       context: app
+{{USER}}
       maxDuration: 2
   - type: passiveScan-wait
     parameters:
@@ -21,6 +23,7 @@ jobs:
   - type: activeScan
     parameters:
       context: app
+{{USER}}
       maxRuleDurationInMins: 2
       maxScanDurationInMins: 15
   - type: passiveScan-wait

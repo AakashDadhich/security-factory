@@ -11,7 +11,7 @@ import yaml
 from factory import config as factory_config
 from factory import findings, tools
 from factory.dast import plan as dast_plan
-from factory.dast.harness import NETWORK
+from factory.dast.harness import NETWORK, HarnessError, auth_credentials, read_env_example
 from factory.dast.plan import PLANS, PlanError
 from factory.findings import FindingsError
 
@@ -117,13 +117,18 @@ def run(plan: str, out: Path, config_path: Path, image: str, runner=None, projec
     openapi = cfg["web"].get("openapi") if plan == "full" else None
     try:
         spec = dast_plan.resolve_spec(openapi, project_dir) if openapi else None
-        (work / plan_file).write_text(dast_plan.render(plan, cfg["web"]["port"], openapi=spec is not None, plan_dir=PLAN_DIR))
+        auth = cfg["web"].get("auth") if plan == "full" else None
+        credentials = auth_credentials(auth, read_env_example(project_dir / ".env.example")) if auth else None
+        (work / plan_file).write_text(dast_plan.render(plan, cfg["web"]["port"], openapi=spec is not None, plan_dir=PLAN_DIR, auth=auth, credentials=credentials))
         cmd = zap_cmd(image, work.resolve(), plan_file, spec)
         dast_plan.assert_safe_command(cmd)
-    except PlanError as e:
+    except (PlanError, HarnessError) as e:
         raise StageError(str(e)) from e
     print("+ " + " ".join(cmd), flush=True)
-    proc = runner(cmd)
+    try:
+        proc = runner(cmd)
+    finally:
+        shutil.rmtree(work / plan_file, ignore_errors=True)
     report = work / f"{REPORT_NAME}.json"
     if proc.returncode != 0 and not report.is_file():
         raise StageError(f"ZAP failed with exit code {proc.returncode}")

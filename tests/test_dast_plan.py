@@ -204,3 +204,138 @@ def test_run_without_exported_tree_writes_no_sites_json(tmp_path):
     out = tmp_path / "out"
     stage.run("full", out, _no_openapi_config(tmp_path), "zap@sha256:abc", runner=_fake_zap_with(False), project_dir=tmp_path)
     assert not (out / "sites.json").exists()
+
+
+AUTH_JSON = {
+    "type": "json",
+    "login_url": "/login",
+    "username_field": "username",
+    "password_field": "password",
+    "username_env": "TEST_USERNAME",
+    "password_env": "TEST_PASSWORD",
+    "logged_in_regex": '"ok":true',
+    "logged_out_regex": "login required",
+}
+AUTH_FORM = {**AUTH_JSON, "type": "form", "login_url": "/session/new"}
+CREDS = ("zap-test", "zap-pw-7f3a9c2e41d8")
+SNAPSHOT_DIR = Path(__file__).parent / "snapshots"
+AUTH_ENV_EXAMPLE = "TEST_USERNAME=zap-test\nTEST_PASSWORD=zap-pw-7f3a9c2e41d8\n"
+
+
+def auth_plan(auth=AUTH_JSON, creds=CREDS, port=3000, openapi=True):
+    return plan.render("full", port, openapi=openapi, auth=auth, credentials=creds)
+
+
+def test_json_auth_plan_matches_snapshot():
+    assert auth_plan() == (SNAPSHOT_DIR / "dast-full-auth-json.yaml").read_text()
+
+
+def test_auth_is_omitted_when_not_configured():
+    text = plan.render("full", 3000, openapi=True)
+    assert "authentication" not in text and "users:" not in text and "user:" not in text
+    assert text == plan.render("full", 3000, openapi=True, auth=None, credentials=CREDS)
+
+
+def test_auth_context_and_scan_users():
+    doc = yaml.safe_load(auth_plan())
+    context = doc["env"]["contexts"][0]
+    assert context["authentication"]["method"] == "json"
+    assert context["authentication"]["parameters"]["loginRequestUrl"] == "http://app:3000/login"
+    assert context["authentication"]["parameters"]["loginRequestBody"] == '{"username":"{%username%}","password":"{%password%}"}'
+    assert context["authentication"]["verification"] == {"method": "response", "loggedInRegex": '"ok":true', "loggedOutRegex": "login required"}
+    assert context["sessionManagement"] == {"method": "cookie"}
+    assert context["users"] == [{"name": "test-user", "credentials": {"username": CREDS[0], "password": CREDS[1]}}]
+    by_type = {j["type"]: j for j in doc["jobs"] if j["type"] in ("spider", "activeScan")}
+    assert by_type["spider"]["parameters"]["user"] == "test-user"
+    assert by_type["activeScan"]["parameters"]["user"] == "test-user"
+    assert by_type["activeScan"]["parameters"]["maxScanDurationInMins"] == 15
+
+
+def test_form_auth_uses_a_urlencoded_body():
+    doc = yaml.safe_load(auth_plan(AUTH_FORM))
+    parameters = doc["env"]["contexts"][0]["authentication"]["parameters"]
+    assert doc["env"]["contexts"][0]["authentication"]["method"] == "form"
+    assert parameters["loginRequestBody"] == "username={%username%}&password={%password%}"
+    assert parameters["loginRequestUrl"] == "http://app:3000/session/new"
+
+
+def test_only_one_regex_is_needed():
+    auth = {k: v for k, v in AUTH_JSON.items() if k != "logged_out_regex"}
+    verification = yaml.safe_load(auth_plan(auth))["env"]["contexts"][0]["authentication"]["verification"]
+    assert verification == {"method": "response", "loggedInRegex": '"ok":true'}
+
+
+def test_credentials_with_yaml_special_characters_stay_one_value():
+    doc = yaml.safe_load(auth_plan(creds=("a: b", 'p"w\n#x')))
+    assert doc["env"]["contexts"][0]["users"][0]["credentials"] == {"username": "a: b", "password": 'p"w\n#x'}
+
+
+@pytest.mark.parametrize("login_url", ["//evil.test/login", "http://evil.test/login", "@evil.test/x", "login"])
+def test_login_url_must_stay_on_the_app(login_url):
+    with pytest.raises(plan.PlanError):
+        auth_plan({**AUTH_JSON, "login_url": login_url})
+
+
+def test_auth_needs_credentials_and_a_known_type():
+    with pytest.raises(plan.PlanError):
+        plan.render("full", 3000, auth=AUTH_JSON)
+    with pytest.raises(plan.PlanError):
+        auth_plan(creds=("", "x"))
+    with pytest.raises(plan.PlanError):
+        auth_plan({**AUTH_JSON, "type": "basic"})
+
+
+def test_auth_is_rejected_for_baseline():
+    with pytest.raises(plan.PlanError):
+        plan.render("baseline", 3000, auth=AUTH_JSON, credentials=CREDS)
+
+
+def test_harness_seeds_the_test_user_only_with_auth(tmp_path):
+    (tmp_path / ".env.example").write_text(AUTH_ENV_EXAMPLE + "PORT=3000\n")
+    web = {"port": 3000, "health_path": "/health", "dockerfile": "Dockerfile"}
+    assert "SEED_TEST_USER" not in harness.app_env(web, tmp_path)
+    env = harness.app_env({**web, "auth": AUTH_JSON}, tmp_path)
+    assert env["SEED_TEST_USER"] == "1"
+    assert env["TEST_USERNAME"] == "zap-test" and env["PORT"] == "3000"
+    assert "-e SEED_TEST_USER=1" in " ".join(harness.run_cmd("5", env))
+
+
+def test_harness_refuses_auth_without_env_values(tmp_path):
+    (tmp_path / ".env.example").write_text("TEST_USERNAME=zap-test\nTEST_PASSWORD=\n")
+    web = {"port": 3000, "health_path": "/health", "dockerfile": "Dockerfile", "auth": AUTH_JSON}
+    with pytest.raises(harness.HarnessError, match="TEST_PASSWORD"):
+        harness.app_env(web, tmp_path)
+    with pytest.raises(harness.HarnessError):
+        harness.app_env(web, tmp_path / "missing")
+
+
+def _auth_config(tmp_path):
+    config = tmp_path / ".factory.yml"
+    web = yaml.safe_load(WEB_CONFIG)
+    web["web"].pop("openapi")
+    web["web"]["auth"] = AUTH_JSON
+    config.write_text(yaml.safe_dump(web))
+    return config
+
+
+def test_run_renders_the_auth_plan_and_removes_it_afterwards(tmp_path):
+    (tmp_path / ".env.example").write_text(AUTH_ENV_EXAMPLE)
+    seen = {}
+
+    def fake_zap(cmd):
+        work = Path(next(c for c in cmd if c.endswith(":/zap/wrk:rw")).split(":")[0])
+        seen["plan"] = yaml.safe_load((work / "full.yaml").read_text())
+        (work / "zap-report.json").write_text(ACTIVE_FIXTURE.read_text())
+        return SimpleNamespace(returncode=0)
+
+    out = tmp_path / "out"
+    stage.run("full", out, _auth_config(tmp_path), "zap@sha256:abc", runner=fake_zap, project_dir=tmp_path)
+    assert seen["plan"]["env"]["contexts"][0]["users"][0]["credentials"]["password"] == CREDS[1]
+    assert not any(CREDS[1] in p.read_text() for p in out.rglob("*") if p.is_file() and p.suffix in (".yaml", ".json"))
+
+
+def test_run_without_env_credentials_fails_before_zap(tmp_path):
+    called = []
+    with pytest.raises(stage.StageError, match="TEST_USERNAME"):
+        stage.run("full", tmp_path / "out", _auth_config(tmp_path), "zap@sha256:abc", runner=lambda cmd: called.append(cmd), project_dir=tmp_path)
+    assert called == []

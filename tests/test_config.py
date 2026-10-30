@@ -92,3 +92,60 @@ def test_main_prints_outputs_without_github_output(tmp_path, monkeypatch, capsys
 def test_main_invalid_config_exits_1(tmp_path, capsys):
     assert config.main(["--path", str(write(tmp_path, "platform: tv\n"))]) == 1
     assert "error:" in capsys.readouterr().err
+
+
+AUTH = """\
+  auth:
+    type: json
+    login_url: /login
+    username_field: username
+    password_field: password
+    username_env: TEST_USERNAME
+    password_env: TEST_PASSWORD
+    logged_in_regex: 'ok'
+"""
+
+
+def test_web_auth_block_is_accepted(tmp_path):
+    cfg = config.load(write(tmp_path, WEB + AUTH))
+    assert cfg["web"]["auth"]["type"] == "json"
+
+
+def test_web_auth_is_optional_and_does_not_change_outputs(tmp_path):
+    values = config.outputs(config.load(write(tmp_path, WEB + AUTH)))
+    assert values == {"platform": "web", "asvs_level": "2", "openapi": "openapi.yaml"}
+
+
+@pytest.mark.parametrize("key", ["type", "login_url", "username_field", "password_field", "username_env", "password_env"])
+def test_web_auth_rejects_a_missing_required_key(tmp_path, key):
+    text = "".join(line for line in (WEB + AUTH).splitlines(keepends=True) if not line.startswith(f"    {key}:"))
+    with pytest.raises(ConfigError, match="web/auth"):
+        config.load(write(tmp_path, text))
+
+
+def test_web_auth_needs_a_regex(tmp_path):
+    text = (WEB + AUTH).replace("    logged_in_regex: 'ok'\n", "")
+    with pytest.raises(ConfigError, match="web/auth"):
+        config.load(write(tmp_path, text))
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("type: json", "type: basic"),
+        ("login_url: /login", "login_url: login"),
+        ("login_url: /login", "login_url: //evil.test/login"),
+        ("login_url: /login", "login_url: http://evil.test/login"),
+        ("TEST_USERNAME", "test_username"),
+        ("TEST_PASSWORD", "TEST PASSWORD"),
+        ("username_field: username", "username_field: 'a=b&c'"),
+    ],
+)
+def test_web_auth_rejects_bad_values(tmp_path, old, new):
+    with pytest.raises(ConfigError, match="web/auth"):
+        config.load(write(tmp_path, (WEB + AUTH).replace(old, new)))
+
+
+def test_web_auth_rejects_extra_keys(tmp_path):
+    with pytest.raises(ConfigError, match="web/auth"):
+        config.load(write(tmp_path, WEB + AUTH + "    password: hunter2\n"))

@@ -40,6 +40,21 @@ def read_env_example(path: Path) -> dict[str, str]:
     return values
 
 
+def auth_credentials(auth: dict, env: dict[str, str]) -> tuple[str, str]:
+    missing = [name for name in (auth["username_env"], auth["password_env"]) if not env.get(name)]
+    if missing:
+        raise HarnessError(f".env.example must define {', '.join(missing)} for web.auth")
+    return env[auth["username_env"]], env[auth["password_env"]]
+
+
+def app_env(web: dict, context: Path) -> dict[str, str]:
+    env = read_env_example(context / ".env.example")
+    if web.get("auth"):
+        auth_credentials(web["auth"], env)
+        env["SEED_TEST_USER"] = "1"
+    return env
+
+
 def network_create_cmd() -> list[str]:
     return ["docker", "network", "create", "--internal", NETWORK]
 
@@ -111,7 +126,7 @@ def up(config_path: Path, run_id: str, context: Path) -> None:
         raise HarnessError("the DAST harness only runs for platform: web")
     lock = tools.load_lock()
     curl_image = tools.get_tool(lock, "curl").image
-    env = read_env_example(context / ".env.example")
+    env = app_env(web, context)
     _run(network_create_cmd())
     try:
         _run(build_cmd(run_id, str(context / web["dockerfile"]), str(context)))
