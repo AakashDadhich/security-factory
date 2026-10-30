@@ -18,6 +18,7 @@ def test_xcodebuild_command_is_a_release_ad_hoc_signed_build():
     assert cmd[cmd.index("-derivedDataPath") + 1] == "/tmp/dd"
     assert "CODE_SIGN_IDENTITY=-" in cmd
     assert "CODE_SIGN_STYLE=Manual" in cmd
+    assert "CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO" in cmd
     assert "-onlyUsePackageVersionsFromResolvedFile" not in cmd
 
 
@@ -94,7 +95,7 @@ def test_script_holds_the_same_build_command_so_codeql_can_trace_only_xcodebuild
     lines = script.read_text().splitlines()
     assert lines[0] == "#!/bin/bash" and "set -euo pipefail" in lines
     assert lines[-1].startswith("exec xcodebuild -project Notes.xcodeproj -scheme Notes -configuration Release")
-    assert "CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual build" in lines[-1]
+    assert "CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO build" in lines[-1]
     assert "-onlyUsePackageVersionsFromResolvedFile" in lines[-1]
     assert script.stat().st_mode & 0o111
     assert [c[0][0] for c in runner.calls] == ["xcodegen"]

@@ -12,7 +12,7 @@ from factory.findings import FindingsError
 
 STAGE = "apple-build"
 RESOLVED = Path("project.xcworkspace") / "xcshareddata" / "swiftpm" / "Package.resolved"
-SIGNING = ("CODE_SIGN_IDENTITY=-", "CODE_SIGN_STYLE=Manual")
+SIGNING = ("CODE_SIGN_IDENTITY=-", "CODE_SIGN_STYLE=Manual", "CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO")
 
 
 class StageError(Exception):
