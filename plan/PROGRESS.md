@@ -54,7 +54,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 23 | vulnerable-web-acceptance | done |
 | 24 | improvement-loop | done |
 | 25 | zap-authenticated-scan | done |
-| 26 | macos-build-and-sast | todo |
+| 26 | macos-build-and-sast | in progress |
 | 27 | apple-scripted-checks | todo |
 | 28 | ios-build-and-mobsf | todo |
 | 29 | apple-vuln-acceptance | todo |
