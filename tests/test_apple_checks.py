@@ -126,12 +126,16 @@ def test_sandbox_explicitly_false_is_high(tmp_path):
 
 
 def test_ios_skips_the_macos_only_rules(tmp_path):
-    assert check(tmp_path, "ios", entitlements="entitlements-no-sandbox.xml", codesign="codesign-no-runtime.txt") == []
+    src = ios_project(tmp_path, "entitlements-no-sandbox.xml")
+    assert run_ios(tmp_path, src / "project.yml") == []
 
 
 @pytest.mark.parametrize("platform", ["macos", "ios"])
 def test_risky_entitlements_on_both_platforms(tmp_path, platform):
-    result = rules(check(tmp_path, platform, entitlements="entitlements-task-allow.xml"))
+    if platform == "ios":
+        result = rules(run_ios(tmp_path, ios_project(tmp_path, "entitlements-task-allow.xml") / "project.yml"))
+    else:
+        result = rules(check(tmp_path, platform, entitlements="entitlements-task-allow.xml"))
     for rule in ("get-task-allow-release", "entitlement-cs-disable-library-validation", "entitlement-cs-allow-unsigned-executable-memory", "entitlement-cs-allow-dyld-environment-variables"):
         assert result[rule]["severity"] == "high"
     temp = result["entitlement-temporary-exception-files-absolute-path-read-only"]
