@@ -1,4 +1,4 @@
-.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint deps-sbom dast-up dast-web dast-down rules plan threat-model codegen
+.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint sast-swiftlint apple-build deps-sbom dast-up dast-web dast-down rules plan threat-model codegen
 
 help:
 	@echo "make test         Run the factory test suite"
@@ -8,6 +8,8 @@ help:
 	@echo "make sast-semgrep Run Semgrep on PLATFORM (default web) over SRC (default .)"
 	@echo "make semgrep-test Run the custom Semgrep rule tests"
 	@echo "make sast-eslint  Run the factory ESLint security config over SRC (default .)"
+	@echo "make sast-swiftlint Run SwiftLint with the factory security config over SRC (macOS)"
+	@echo "make apple-build  Generate the Xcode project, build it ad-hoc signed and zip the .app (macOS)"
 	@echo "make deps-sbom    Scan dependencies and write a CycloneDX SBOM for SRC (default .)"
 	@echo "make dast-up      Build and start the throwaway app on the isolated DAST network"
 	@echo "make dast-web     Run the ZAP full scan (OpenAPI import and active scan) against the running app"
@@ -40,6 +42,12 @@ semgrep-test:
 
 sast-eslint:
 	python -m factory.stages.sast_eslint --src $(SRC) --out out/sast-eslint
+
+sast-swiftlint:
+	python -m factory.stages.swiftlint --src $(SRC) --out out/sast-swiftlint
+
+apple-build:
+	python -m factory.stages.apple_build run --src $(SRC) --out out/apple-build
 
 deps-sbom:
 	python -m factory.stages.deps_sbom --src $(SRC) --out out/deps-sbom

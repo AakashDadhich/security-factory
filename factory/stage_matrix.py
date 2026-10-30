@@ -26,6 +26,9 @@ STAGES = (
     Stage("sast-semgrep"),
     Stage("sast-codeql", platforms=("web",)),
     Stage("sast-eslint", platforms=("web",)),
+    Stage("sast-swiftlint", platforms=("macos",)),
+    Stage("sast-codeql-swift", platforms=("macos",)),
+    Stage("apple-build", platforms=("macos",)),
     Stage("deps-sbom"),
     Stage("dast-web", platforms=("web",)),
 )

@@ -113,7 +113,7 @@ jobs:
         run: >-
           python -m factory.manifest create
           --config "$CONFIG_PATH" --mode "$MODE" --factory-ref "$FACTORY_REF" --issue "$ISSUE" --iteration "$ITERATION"
-          --stage plan --stage threat-model --stage codegen-ai --stage codegen-commit --stage review --stage passthrough --stage hello-ai --stage secrets --stage sast-semgrep --stage sast-codeql --stage sast-eslint --stage deps-sbom --stage dast-web --stage gate
+          --stage plan --stage threat-model --stage codegen-ai --stage codegen-commit --stage review --stage passthrough --stage hello-ai --stage secrets --stage sast-semgrep --stage sast-codeql --stage sast-eslint --stage sast-swiftlint --stage sast-codeql-swift --stage apple-build --stage deps-sbom --stage dast-web --stage gate
           --out out/setup/run-manifest.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -703,6 +703,115 @@ jobs:
           path: out/sast-eslint/
           if-no-files-found: error
 
+  apple-build:
+    needs: [setup, codegen-commit, review]
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && needs.setup.outputs.platform == 'macos' }}
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.codegen-commit.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - uses: ./.factory/.github/actions/setup-factory
+      - run: python -m factory.tools install xcode xcodegen
+      - name: generate, build and zip
+        env:
+          CONFIG_PATH: ${{ inputs.config-path }}
+        run: python -m factory.stages.apple_build run --config "$CONFIG_PATH" --out out/apple-build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: apple-build
+          path: out/apple-build/
+          if-no-files-found: error
+
+  sast-swiftlint:
+    needs: [setup, codegen-commit, review]
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && needs.setup.outputs.platform == 'macos' }}
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.codegen-commit.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - uses: ./.factory/.github/actions/setup-factory
+      - run: python -m factory.tools install swiftlint
+      - name: swiftlint
+        run: python -m factory.stages.swiftlint --src . --out out/sast-swiftlint
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: sast-swiftlint
+          path: out/sast-swiftlint/
+          if-no-files-found: error
+
+  sast-codeql-swift:
+    needs: [setup, codegen-commit, review]
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && needs.setup.outputs.platform == 'macos' }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.codegen-commit.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - uses: ./.factory/.github/actions/setup-factory
+      - run: python -m factory.tools install xcode xcodegen
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: swift
+          build-mode: manual
+          queries: security-extended
+          config: |
+            paths-ignore:
+              - .factory
+      - name: build for CodeQL
+        env:
+          CONFIG_PATH: ${{ inputs.config-path }}
+        run: python -m factory.stages.apple_build build --config "$CONFIG_PATH" --derived build/codeql
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:swift
+          output: out/sast-codeql-swift
+          upload: always
+      - name: convert SARIF to findings
+        run: |
+          python -m factory.sarif out/sast-codeql-swift/swift.sarif \
+            --stage sast-codeql-swift --tool codeql --out out/sast-codeql-swift/findings.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: sast-codeql-swift
+          path: out/sast-codeql-swift/
+          if-no-files-found: error
+
   deps-sbom:
     needs: [setup, codegen-commit, review]
     if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) }}
@@ -774,7 +883,7 @@ jobs:
           if-no-files-found: error
 
   gate:
-    needs: [authorize, setup, ai-eligible, plan, threat-model, codegen-ai, codegen-commit, review, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, deps-sbom, dast-web]
+    needs: [authorize, setup, ai-eligible, plan, threat-model, codegen-ai, codegen-commit, review, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, sast-swiftlint, sast-codeql-swift, apple-build, deps-sbom, dast-web]
     # A refused spec, change or fix run stops at authorize. In every other mode the gate always runs and fails closed.
     if: always() && (needs.authorize.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix'))
     runs-on: ubuntu-24.04
