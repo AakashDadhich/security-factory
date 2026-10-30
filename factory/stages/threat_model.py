@@ -131,15 +131,19 @@ def _finalize(threat: dict, threat_id: str, framework: str) -> dict:
     return result
 
 
-def merge(reply_threats: list[dict], previous: dict | None, model_version: str, framework: str = FRAMEWORK) -> dict:
-    return merge_with_ids(reply_threats, previous, model_version, framework)[0]
+def merge(reply_threats: list[dict], previous: dict | None, model_version: str, framework: str = FRAMEWORK,
+          keep=None) -> dict:
+    return merge_with_ids(reply_threats, previous, model_version, framework, keep)[0]
 
 
 def merge_with_ids(reply_threats: list[dict], previous: dict | None, model_version: str,
-                   framework: str = FRAMEWORK) -> tuple[dict, list[str]]:
+                   framework: str = FRAMEWORK, keep=None) -> tuple[dict, list[str]]:
     previous = previous or {"threats": [], "removed": []}
     mine = [t for t in previous["threats"] if t["framework"] == framework]
     others = [t for t in previous["threats"] if t["framework"] != framework]
+    if keep is not None:
+        others += [t for t in mine if keep(t)]
+        mine = [t for t in mine if not keep(t)]
     by_id = {t["id"]: t for t in mine}
     next_number = 1 + max((_number(t["id"]) for t in previous["threats"] + previous["removed"]), default=0)
     used, current, ids = set(), [], []
@@ -216,6 +220,11 @@ def load_plan(plan_path: Path) -> dict:
     if list(findings.validator("plan.schema.json").iter_errors(plan)):
         raise ThreatModelError(f"{plan_path} does not match plan.schema.json")
     return plan
+
+
+def focus_elements(plan: dict | None, names: list[str]) -> tuple[list[str], list[str]]:
+    touched = (plan or {}).get("touched_elements") or []
+    return [n for n in names if n in touched], [t for t in touched if t not in names]
 
 
 def linddun_pass(plan: dict, doc: dict, out: Path, inputs: list[Path], names: list[str], asvs: list[str],
@@ -295,8 +304,7 @@ def run(plan_path: Path | None, out: Path, previous_dir: Path | None, python: Pa
     context = plan_path or diff_path
     if context is None:
         raise ThreatModelError("either a plan or a diff is required")
-    if plan_path is not None:
-        load_plan(plan_path)
+    plan = load_plan(plan_path) if plan_path is not None else None
     previous_paths, previous = load_previous(previous_dir)
     if previous_paths:
         print(f"updating the existing model from {', '.join(map(str, previous_paths))}")
@@ -309,8 +317,15 @@ def run(plan_path: Path | None, out: Path, previous_dir: Path | None, python: Pa
     if previous is not None:
         inputs.append(previous_dir / "threats.json")
     names, asvs = pytm_runner.element_names(model), asvs_ids()
+    focus, ignored = focus_elements(plan, names) if previous is not None else ([], [])
+    if focus:
+        (out / "touched.json").write_text(json.dumps({"elements": focus}, indent=2) + "\n")
+        inputs.append(out / "touched.json")
+        print(f"change: STRIDE focuses on {', '.join(focus)}; other STRIDE threats are carried over")
+    if ignored:
+        print(f"change: touched elements not in the model were ignored: {', '.join(ignored)}")
     schema_path = out / "stride-reply.schema.json"
-    schema_path.write_text(json.dumps(stride_reply_schema(names, asvs), indent=2) + "\n")
+    schema_path.write_text(json.dumps(stride_reply_schema(focus or names, asvs), indent=2) + "\n")
     reply_path = out / "stride-reply.json"
     code = adapter.run_stage(
         stage=STRIDE_STAGE, prompt_path=STRIDE_PROMPT, inputs=inputs, schema_path=schema_path,
@@ -318,14 +333,16 @@ def run(plan_path: Path | None, out: Path, previous_dir: Path | None, python: Pa
     )
     if code != adapter.EXIT_OK:
         return code
-    doc = merge(json.loads(reply_path.read_text())["threats"], previous, model_version)
+    keep = (lambda t: t["element"] not in focus and t["element"] in names) if focus else None
+    doc = merge(json.loads(reply_path.read_text())["threats"], previous, model_version, keep=keep)
     passes = {"stride": {"status": "ran"}}
+    if focus:
+        passes["stride"].update({"focus": focus, "ignored": ignored})
 
     if plan_path is None:
         for name in ("linddun", "attack-trees"):
             passes[name] = {"status": "skipped", "reason": "there is no plan, so existing threats of this kind are kept"}
     else:
-        plan = load_plan(plan_path)
         code, doc = linddun_pass(plan, doc, out, inputs, names, asvs, passes, workdir)
         if code != adapter.EXIT_OK:
             return code
