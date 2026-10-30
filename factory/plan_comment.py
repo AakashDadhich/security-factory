@@ -67,6 +67,10 @@ def render(plan: dict, run_url: str | None = None) -> str:
     ]
     if plan["users"]:
         lines += [f"**Users:** {', '.join(escape(u, 80) for u in plan['users'][:ITEM_LIMIT])}", ""]
+    if plan.get("changed_features"):
+        lines += [f"**Changed features:** {', '.join(escape(i, 40) for i in plan['changed_features'][:ITEM_LIMIT])}", ""]
+    if plan.get("touched_elements"):
+        lines += [f"**Touched elements:** {', '.join(escape(e, 80) for e in plan['touched_elements'][:ITEM_LIMIT])}", ""]
     lines += _section("Features", features)
     lines += _section("Requirements", requirements)
     lines += _section("Abuse cases", abuse)
