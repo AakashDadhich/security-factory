@@ -86,6 +86,27 @@ def project(tmp_path):
     return src
 
 
+def test_script_holds_the_same_build_command_so_codeql_can_trace_only_xcodebuild(project, tmp_path):
+    spec, scheme = stage.settings(project, project / ".factory.yml")
+    runner = FakeMac(project)
+    generated = stage.generate(project, spec, runner=runner)
+    script = stage.write_script(project, generated, scheme, project / "build" / "codeql", tmp_path / "x.sh")
+    lines = script.read_text().splitlines()
+    assert lines[0] == "#!/bin/bash" and "set -euo pipefail" in lines
+    assert lines[-1].startswith("exec xcodebuild -project Notes.xcodeproj -scheme Notes -configuration Release")
+    assert "CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual build" in lines[-1]
+    assert "-onlyUsePackageVersionsFromResolvedFile" in lines[-1]
+    assert script.stat().st_mode & 0o111
+    assert [c[0][0] for c in runner.calls] == ["xcodegen"]
+
+
+def test_zip_runs_ditto_with_a_bare_app_name_from_the_products_folder(project, tmp_path):
+    runner = FakeMac(project)
+    stage.run(project, project / ".factory.yml", tmp_path / "out", runner=runner)
+    cmd, cwd = runner.calls[2]
+    assert cmd[-2] == "Notes.app" and cwd.name == "Release"
+
+
 def test_run_generates_builds_and_zips_in_order(project, tmp_path):
     runner = FakeMac(project)
     archive = stage.run(project, project / ".factory.yml", tmp_path / "out", runner=runner)

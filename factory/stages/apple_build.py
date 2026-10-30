@@ -1,4 +1,5 @@
 import argparse
+import shlex
 import shutil
 import subprocess
 import sys
@@ -90,6 +91,15 @@ def build(src: Path, project: Path, scheme: str, derived: Path, runner=None) -> 
     return find_app(derived)
 
 
+def write_script(src: Path, project: Path, scheme: str, derived: Path, script: Path) -> Path:
+    pinned = pin_packages(src, src / project)
+    cmd = xcodebuild_command(project, scheme, derived.resolve(), pinned)
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text(f"#!/bin/bash\nset -euo pipefail\ncd {shlex.quote(str(src.resolve()))}\nexec {shlex.join(cmd)}\n")
+    script.chmod(0o755)
+    return script
+
+
 def find_app(derived: Path) -> Path:
     apps = sorted((derived / "Build" / "Products" / "Release").glob("*.app"))
     if len(apps) != 1:
@@ -101,7 +111,7 @@ def package(app: Path, out: Path, runner=None) -> Path:
     runner = runner or subprocess.run
     out.mkdir(parents=True, exist_ok=True)
     archive = out / f"{app.name}.zip"
-    _run(ditto_command(app, archive.resolve()), runner, app.parent)
+    _run(ditto_command(app.name, archive.resolve()), runner, app.parent)
     if not archive.is_file():
         raise StageError(f"ditto wrote no archive at {archive}")
     return archive
@@ -120,10 +130,11 @@ def run(src: str | Path, config_path: str | Path, out: str | Path, derived: str 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m factory.stages.apple_build", description="Generate the Xcode project with XcodeGen and build it ad-hoc signed")
-    parser.add_argument("step", choices=("run", "generate", "build"), help="run does generate, build and zip; generate and build are for CodeQL's manual build")
+    parser.add_argument("step", choices=("run", "generate", "build", "script"), help="run does generate, build and zip; script generates the project and writes the xcodebuild command to --script, so CodeQL can trace only xcodebuild")
     parser.add_argument("--src", default=".")
     parser.add_argument("--config", default=".factory.yml")
     parser.add_argument("--out", default="out/apple-build")
+    parser.add_argument("--script", default="build/xcodebuild.sh", help="where the script step writes the build command")
     parser.add_argument("--derived", default="build/apple", help="derived data folder, relative to --src")
     args = parser.parse_args(argv)
     src = Path(args.src)
@@ -135,6 +146,8 @@ def main(argv: list[str] | None = None) -> int:
             project = generate(src, spec)
             if args.step == "build":
                 build(src, project, scheme, src / args.derived)
+            elif args.step == "script":
+                write_script(src, project, scheme, src / args.derived, Path(args.script))
     except (StageError, FindingsError, config.ConfigError, OSError, yaml.YAMLError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

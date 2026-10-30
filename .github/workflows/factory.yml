@@ -784,6 +784,10 @@ jobs:
           persist-credentials: false
       - uses: ./.factory/.github/actions/setup-factory
       - run: python -m factory.tools install xcode xcodegen
+      - name: generate the project and write the build command
+        env:
+          CONFIG_PATH: ${{ inputs.config-path }}
+        run: python -m factory.stages.apple_build script --config "$CONFIG_PATH" --derived build/codeql --script "$RUNNER_TEMP/xcodebuild-codeql.sh"
       - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           languages: swift
@@ -793,9 +797,7 @@ jobs:
             paths-ignore:
               - .factory
       - name: build for CodeQL
-        env:
-          CONFIG_PATH: ${{ inputs.config-path }}
-        run: python -m factory.stages.apple_build build --config "$CONFIG_PATH" --derived build/codeql
+        run: bash "$RUNNER_TEMP/xcodebuild-codeql.sh"
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           category: /language:swift

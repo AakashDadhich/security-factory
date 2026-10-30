@@ -69,9 +69,11 @@ def test_codeql_swift_uses_a_manual_build_and_the_same_builder():
     init = next(s for s in steps if "codeql-action/init" in s.get("uses", ""))
     assert init["with"]["languages"] == "swift" and init["with"]["build-mode"] == "manual"
     run_steps = [s.get("run", "") for s in steps]
-    assert any("factory.stages.apple_build build" in r for r in run_steps)
+    assert any("factory.stages.apple_build script" in r for r in run_steps)
     uses = [s.get("uses", "") for s in steps]
-    assert uses.index(init["uses"]) < next(i for i, s in enumerate(steps) if "apple_build build" in s.get("run", ""))
+    build = next(i for i, s in enumerate(steps) if "xcodebuild-codeql.sh" in s.get("run", "") and "apple_build" not in s["run"])
+    assert steps.index(init) < build
+    assert not any("python" in steps[i].get("run", "") for i in range(steps.index(init) + 1, build))
     assert any("codeql-action/analyze" in u for u in uses)
 
 
