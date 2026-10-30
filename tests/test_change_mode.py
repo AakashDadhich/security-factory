@@ -354,7 +354,7 @@ def test_next_step_adds_the_threat_diff_to_the_pass_comment():
 
 def test_record_job_comments_the_sbom_diff_only_after_a_default_branch_pass():
     record = jobs()["record"]
-    assert record["permissions"] == {"contents": "read", "issues": "write", "pull-requests": "read"}
+    assert record["permissions"] == {"contents": "read", "issues": "write"}
     steps = {s["name"]: s for s in record["steps"] if "name" in s}
     condition = steps["comment the dependency changes on the merged issue"]["if"]
     assert "github.event_name == 'push'" in condition and "needs.gate.result == 'success'" in condition
@@ -638,3 +638,12 @@ def test_spec_mode_ignores_touched_elements_without_a_previous_model(tm_project,
     assert code == 0
     assert not (out / "touched.json").exists()
     assert len([t for t in json.loads((out / "threats.json").read_text())["threats"] if t["framework"] == "stride"]) == 4
+
+
+def test_no_job_asks_for_a_permission_the_project_stub_does_not_grant():
+    stub = yaml.safe_load((REPO / "templates" / "project" / ".github" / "workflows" / "factory.yml").read_text())
+    granted = stub["jobs"]["factory"]["permissions"]
+    order = {"none": 0, "read": 1, "write": 2}
+    for name, job in jobs().items():
+        for scope, level in (job.get("permissions") or {}).items():
+            assert order[level] <= order[granted.get(scope, "none")], f"{name} asks for {scope}: {level}"
