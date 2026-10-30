@@ -1,4 +1,4 @@
-.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint sast-swiftlint apple-build apple-checks deps-sbom dast-up dast-web dast-down rules plan threat-model codegen
+.PHONY: help test tools-list ensure-make secrets sast-semgrep semgrep-test sast-eslint sast-swiftlint apple-build apple-checks mobsf deps-sbom dast-up dast-web dast-down rules plan threat-model codegen
 
 help:
 	@echo "make test         Run the factory test suite"
@@ -10,7 +10,8 @@ help:
 	@echo "make sast-eslint  Run the factory ESLint security config over SRC (default .)"
 	@echo "make sast-swiftlint Run SwiftLint with the factory security config over SRC (macOS)"
 	@echo "make apple-checks Run the scripted Apple checks on APP (a built .app) for PLATFORM=macos|ios"
-	@echo "make apple-build  Generate the Xcode project, build it ad-hoc signed and zip the .app (macOS)"
+	@echo "make apple-build  Generate the Xcode project and build it: ad-hoc signed .app zip (macOS), unsigned app.ipa (iOS)"
+	@echo "make mobsf        Run MobSF static analysis in Docker on IPA (an unsigned iOS app.ipa)"
 	@echo "make deps-sbom    Scan dependencies and write a CycloneDX SBOM for SRC (default .)"
 	@echo "make dast-up      Build and start the throwaway app on the isolated DAST network"
 	@echo "make dast-web     Run the ZAP full scan (OpenAPI import and active scan) against the running app"
@@ -52,6 +53,9 @@ apple-build:
 
 apple-checks:
 	python -m factory.stages.apple_checks --app $(APP) --platform $(PLATFORM) --src $(SRC) --out out/apple-checks
+
+mobsf:
+	python -m factory.stages.mobsf --ipa $(IPA) --out out/mobsf
 
 deps-sbom:
 	python -m factory.stages.deps_sbom --src $(SRC) --out out/deps-sbom
