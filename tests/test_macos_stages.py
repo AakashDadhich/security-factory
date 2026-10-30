@@ -33,7 +33,7 @@ def test_web_does_not_expect_macos_stages():
 
 
 def test_web_only_jobs_are_not_applicable_to_macos_by_not_being_expected():
-    assert {s.name for s in stage_matrix.STAGES if "macos" not in s.platforms} == {"sast-codeql", "sast-eslint", "dast-web"}
+    assert {s.name for s in stage_matrix.STAGES if "macos" not in s.platforms} == {"sast-codeql", "sast-eslint", "dast-web", "mobsf"}
 
 
 def test_macos_jobs_run_on_macos_15_with_least_privilege():

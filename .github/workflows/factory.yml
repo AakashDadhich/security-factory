@@ -113,7 +113,7 @@ jobs:
         run: >-
           python -m factory.manifest create
           --config "$CONFIG_PATH" --mode "$MODE" --factory-ref "$FACTORY_REF" --issue "$ISSUE" --iteration "$ITERATION"
-          --stage plan --stage threat-model --stage codegen-ai --stage codegen-commit --stage review --stage passthrough --stage hello-ai --stage secrets --stage sast-semgrep --stage sast-codeql --stage sast-eslint --stage sast-swiftlint --stage sast-codeql-swift --stage apple-build --stage apple-checks --stage deps-sbom --stage dast-web --stage gate
+          --stage plan --stage threat-model --stage codegen-ai --stage codegen-commit --stage review --stage passthrough --stage hello-ai --stage secrets --stage sast-semgrep --stage sast-codeql --stage sast-eslint --stage sast-swiftlint --stage sast-codeql-swift --stage apple-build --stage apple-checks --stage mobsf --stage deps-sbom --stage dast-web --stage gate
           --out out/setup/run-manifest.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -705,7 +705,7 @@ jobs:
 
   apple-build:
     needs: [setup, codegen-commit, review]
-    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && needs.setup.outputs.platform == 'macos' }}
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && (needs.setup.outputs.platform == 'macos' || needs.setup.outputs.platform == 'ios') }}
     runs-on: macos-15
     timeout-minutes: 30
     permissions:
@@ -723,7 +723,7 @@ jobs:
           persist-credentials: false
       - uses: ./.factory/.github/actions/setup-factory
       - run: python -m factory.tools install xcode xcodegen
-      - name: generate, build and zip
+      - name: generate, build and package
         env:
           CONFIG_PATH: ${{ inputs.config-path }}
         run: python -m factory.stages.apple_build run --config "$CONFIG_PATH" --out out/apple-build
@@ -736,9 +736,10 @@ jobs:
       - name: apple checks
         env:
           PLATFORM: ${{ needs.setup.outputs.platform }}
+          CONFIG_PATH: ${{ inputs.config-path }}
         run: |
-          app=$(ls -d build/apple/Build/Products/Release/*.app)
-          python -m factory.stages.apple_checks --app "$app" --platform "$PLATFORM" --src . --out out/apple-checks
+          app=$(ls -d build/apple/Build/Products/Release*/*.app)
+          python -m factory.stages.apple_checks --app "$app" --platform "$PLATFORM" --src . --config "$CONFIG_PATH" --out out/apple-checks
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: apple-checks
@@ -747,7 +748,7 @@ jobs:
 
   sast-swiftlint:
     needs: [setup, codegen-commit, review]
-    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && needs.setup.outputs.platform == 'macos' }}
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && (needs.setup.outputs.platform == 'macos' || needs.setup.outputs.platform == 'ios') }}
     runs-on: macos-15
     timeout-minutes: 15
     permissions:
@@ -776,7 +777,7 @@ jobs:
 
   codeql-swift-analyze:
     needs: [setup, codegen-commit, review]
-    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && needs.setup.outputs.platform == 'macos' }}
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && (needs.setup.outputs.platform == 'macos' || needs.setup.outputs.platform == 'ios') }}
     runs-on: macos-15
     timeout-minutes: 45
     permissions:
@@ -824,7 +825,7 @@ jobs:
 
   sast-codeql-swift:
     needs: [setup, codegen-commit, review, codeql-swift-analyze]
-    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && needs.setup.outputs.platform == 'macos' }}
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && (needs.setup.outputs.platform == 'macos' || needs.setup.outputs.platform == 'ios') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -850,6 +851,37 @@ jobs:
         with:
           name: sast-codeql-swift
           path: out/sast-codeql-swift/
+          if-no-files-found: error
+
+  mobsf:
+    needs: [setup, codegen-commit, review, apple-build]
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && needs.setup.outputs.platform == 'ios' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - uses: ./.factory/.github/actions/setup-factory
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: apple-build
+          path: in/apple-build
+      - run: python -m factory.tools install mobsf
+      - name: mobsf static analysis
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: python -m factory.stages.mobsf --ipa in/apple-build/app.ipa --out out/mobsf --run-id "$RUN_ID"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mobsf
+          path: out/mobsf/
           if-no-files-found: error
 
   deps-sbom:
@@ -923,7 +955,7 @@ jobs:
           if-no-files-found: error
 
   gate:
-    needs: [authorize, setup, ai-eligible, plan, threat-model, codegen-ai, codegen-commit, review, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, sast-swiftlint, codeql-swift-analyze, sast-codeql-swift, apple-build, deps-sbom, dast-web]
+    needs: [authorize, setup, ai-eligible, plan, threat-model, codegen-ai, codegen-commit, review, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, sast-swiftlint, codeql-swift-analyze, sast-codeql-swift, apple-build, mobsf, deps-sbom, dast-web]
     # A refused spec, change or fix run stops at authorize. In every other mode the gate always runs and fails closed.
     if: always() && (needs.authorize.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix'))
     runs-on: ubuntu-24.04
