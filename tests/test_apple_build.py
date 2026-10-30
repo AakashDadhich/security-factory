@@ -150,3 +150,107 @@ def test_config_without_an_apple_section_is_refused(tmp_path):
 def test_main_reports_errors(tmp_path, capsys):
     assert stage.main(["run", "--src", str(tmp_path), "--config", str(tmp_path / "missing.yml")]) == 1
     assert "error:" in capsys.readouterr().err
+
+
+IOS_CONFIG = "platform: ios\napple:\n  project_spec: project.yml\n  scheme: Notes\n"
+
+
+def test_ios_xcodebuild_command_builds_unsigned_for_devices():
+    cmd = stage.xcodebuild_command("Notes.xcodeproj", "Notes", "/tmp/dd", platform="ios")
+    assert cmd[cmd.index("-sdk") + 1] == "iphoneos"
+    assert cmd[cmd.index("-destination") + 1] == "generic/platform=iOS"
+    assert cmd[cmd.index("-configuration") + 1] == "Release"
+    assert "CODE_SIGNING_ALLOWED=NO" in cmd and cmd[-1] == "build"
+    assert not any(a.startswith("CODE_SIGN_IDENTITY") for a in cmd)
+
+
+def test_macos_command_has_no_sdk_or_destination():
+    cmd = stage.xcodebuild_command("a.xcodeproj", "A", "dd")
+    assert "-sdk" not in cmd and "-destination" not in cmd and "CODE_SIGNING_ALLOWED=NO" not in cmd
+
+
+def test_ios_products_folder_is_release_iphoneos():
+    assert stage.products_dir("ios") == "Release-iphoneos" and stage.products_dir("macos") == "Release"
+
+
+def make_ios_app(root: Path, name: str = "Notes.app") -> Path:
+    app = root / name
+    (app / "Frameworks").mkdir(parents=True)
+    (app / "Notes").write_bytes(b"\xcf\xfa\xed\xfe")
+    (app / "Notes").chmod(0o755)
+    (app / "Info.plist").write_text("<plist/>")
+    (app / "Frameworks" / "link").symlink_to("../Info.plist")
+    return app
+
+
+def test_package_ipa_puts_the_app_under_payload(tmp_path):
+    import zipfile
+
+    archive = stage.package_ipa(make_ios_app(tmp_path / "products"), tmp_path / "out")
+    assert archive == tmp_path / "out" / "app.ipa"
+    with zipfile.ZipFile(archive) as zf:
+        names = zf.namelist()
+        assert names[0] == "Payload/"
+        assert "Payload/Notes.app/Info.plist" in names and "Payload/Notes.app/Notes" in names
+        assert "Payload/Notes.app/Frameworks/" in names
+        assert all(n.startswith("Payload/") for n in names)
+        assert zf.testzip() is None
+
+
+def test_package_ipa_keeps_the_executable_bit_and_symlinks(tmp_path):
+    import stat
+    import zipfile
+
+    archive = stage.package_ipa(make_ios_app(tmp_path / "products"), tmp_path / "out")
+    with zipfile.ZipFile(archive) as zf:
+        binary = zf.getinfo("Payload/Notes.app/Notes")
+        assert (binary.external_attr >> 16) & 0o111
+        link = zf.getinfo("Payload/Notes.app/Frameworks/link")
+        assert stat.S_ISLNK(link.external_attr >> 16)
+        assert zf.read(link).decode() == "../Info.plist"
+
+
+def test_package_ipa_is_reproducible(tmp_path):
+    app = make_ios_app(tmp_path / "products")
+    first = stage.package_ipa(app, tmp_path / "a").read_bytes()
+    second = stage.package_ipa(app, tmp_path / "b").read_bytes()
+    assert first == second
+
+
+class FakePhone(FakeMac):
+    def __call__(self, cmd, cwd=None):
+        if cmd[0] == "xcodebuild":
+            self.calls.append((cmd, cwd))
+            products = Path(cmd[cmd.index("-derivedDataPath") + 1]) / "Build" / "Products" / "Release-iphoneos"
+            make_ios_app(products)
+            return SimpleNamespace(returncode=0)
+        return super().__call__(cmd, cwd)
+
+
+def test_ios_run_builds_for_iphoneos_and_writes_app_ipa_without_ditto(project, tmp_path):
+    (project / ".factory.yml").write_text(IOS_CONFIG)
+    runner = FakePhone(project)
+    archive = stage.run(project, project / ".factory.yml", tmp_path / "out", runner=runner)
+    assert [c[0][0] for c in runner.calls] == ["xcodegen", "xcodebuild"]
+    assert "-sdk" in runner.calls[1][0]
+    assert archive == tmp_path / "out" / "app.ipa" and archive.is_file()
+    assert json.loads((tmp_path / "out" / "findings.json").read_text()) == []
+
+
+def test_ios_script_holds_the_iphoneos_command(project, tmp_path):
+    (project / ".factory.yml").write_text(IOS_CONFIG)
+    spec, scheme = stage.settings(project, project / ".factory.yml")
+    runner = FakePhone(project)
+    generated = stage.generate(project, spec, runner=runner)
+    script = stage.write_script(project, generated, scheme, project / "build" / "codeql", tmp_path / "x.sh", "ios")
+    last = script.read_text().splitlines()[-1]
+    assert "-sdk iphoneos" in last and "-destination generic/platform=iOS" in last and "CODE_SIGNING_ALLOWED=NO" in last
+
+
+def test_config_platform_must_be_apple(tmp_path):
+    cfg = tmp_path / ".factory.yml"
+    cfg.write_text("platform: web\nweb:\n  port: 3000\n  health_path: /health\n  dockerfile: Dockerfile\n")
+    with pytest.raises(stage.StageError, match="not an Apple platform"):
+        stage.config_platform(cfg)
+    cfg.write_text(IOS_CONFIG)
+    assert stage.config_platform(cfg) == "ios"
