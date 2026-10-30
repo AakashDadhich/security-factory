@@ -1,0 +1,47 @@
+source: https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api
+categories:
+  - type: NSPrivacyAccessedAPICategoryUserDefaults
+    rule: user-defaults
+    label: UserDefaults
+    patterns:
+      - '\bUserDefaults\b'
+      - '\bNSUserDefaults\b'
+      - '@AppStorage\b'
+  - type: NSPrivacyAccessedAPICategoryFileTimestamp
+    rule: file-timestamp
+    label: file timestamp APIs
+    patterns:
+      - '\bNSFileCreationDate\b'
+      - '\bNSFileModificationDate\b'
+      - '\bfileCreationDate\b'
+      - '\bfileModificationDate\b'
+      - '\bcreationDateKey\b'
+      - '\bcontentModificationDateKey\b'
+      - '\bcontentAccessDateKey\b'
+      - '\battributeModificationDateKey\b'
+      - '\b[fl]?stat\('
+      - '\bgetattrlist(bulk)?\('
+      - '\bfgetattrlist\('
+  - type: NSPrivacyAccessedAPICategorySystemBootTime
+    rule: system-boot-time
+    label: system boot time APIs
+    patterns:
+      - '\bsystemUptime\b'
+      - '\bmach_absolute_time\('
+  - type: NSPrivacyAccessedAPICategoryDiskSpace
+    rule: disk-space
+    label: disk space APIs
+    patterns:
+      - '\bvolumeAvailableCapacity(ForImportantUsage|ForOpportunisticUsage)?Key\b'
+      - '\bvolumeTotalCapacityKey\b'
+      - '\bNSFileSystemFreeSize\b'
+      - '\bNSFileSystemSize\b'
+      - '\bsystemFreeSize\b'
+      - '\bsystemSize\b'
+      - '\bstatv?fs\('
+      - '\bfstatfs\('
+  - type: NSPrivacyAccessedAPICategoryActiveKeyboards
+    rule: active-keyboards
+    label: active keyboard APIs
+    patterns:
+      - '\bactiveInputModes\b'
