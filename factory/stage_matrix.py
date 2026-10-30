@@ -29,6 +29,7 @@ STAGES = (
     Stage("sast-swiftlint", platforms=("macos",)),
     Stage("sast-codeql-swift", platforms=("macos",)),
     Stage("apple-build", platforms=("macos",)),
+    Stage("apple-checks", platforms=("macos",)),
     Stage("deps-sbom"),
     Stage("dast-web", platforms=("web",)),
 )

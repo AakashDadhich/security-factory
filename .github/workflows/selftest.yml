@@ -183,3 +183,7 @@ jobs:
           swiftlint version
           find "$HOME/.factory/xcodegen/xcodegen/share/xcodegen/SettingPresets" -maxdepth 1 | head -3
           xcodebuild -version
+      - name: codesign integration
+        env:
+          FACTORY_REQUIRE_CODESIGN: "1"
+        run: python -m pytest -v tests/test_apple_checks.py -k integration

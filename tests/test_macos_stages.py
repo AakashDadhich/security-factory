@@ -20,7 +20,7 @@ def names(platform: str, mode: str = "check") -> list[str]:
 
 
 def test_macos_check_mode_expects_the_six_stages_and_the_ai_ones():
-    assert set(names("macos")) == {"threat-model", "review", "secrets", "sast-semgrep", "sast-swiftlint", "sast-codeql-swift", "deps-sbom", "apple-build"}
+    assert set(names("macos")) == {"threat-model", "review", "secrets", "sast-semgrep", "sast-swiftlint", "sast-codeql-swift", "deps-sbom", "apple-build", "apple-checks"}
 
 
 def test_macos_does_not_expect_web_only_stages():
@@ -82,6 +82,22 @@ def test_apple_build_job_uploads_the_zip_artifact():
     steps = jobs()["apple-build"]["steps"]
     upload = next(s for s in steps if "upload-artifact" in s.get("uses", ""))
     assert upload["with"]["name"] == "apple-build" and upload["with"]["path"] == "out/apple-build/"
+
+
+def test_apple_checks_run_inside_apple_build_after_the_build_and_upload_their_own_artifact():
+    steps = jobs()["apple-build"]["steps"]
+    build = next(i for i, s in enumerate(steps) if "apple_build run" in s.get("run", ""))
+    checks = next(i for i, s in enumerate(steps) if "factory.stages.apple_checks" in s.get("run", ""))
+    assert checks > build
+    uploads = {s["with"]["name"]: s["with"]["path"] for s in steps if "upload-artifact" in s.get("uses", "")}
+    assert uploads == {"apple-build": "out/apple-build/", "apple-checks": "out/apple-checks/"}
+    assert "apple-checks" not in jobs()
+
+
+def test_apple_checks_is_a_macos_only_matrix_stage_and_in_the_manifest():
+    assert "apple-checks" in names("macos") and "apple-checks" not in names("web")
+    step = next(s for s in jobs()["setup"]["steps"] if s.get("name") == "write run manifest")
+    assert "--stage apple-checks" in step["run"]
 
 
 def test_app_private_key_and_claude_token_stay_out_of_the_macos_jobs():

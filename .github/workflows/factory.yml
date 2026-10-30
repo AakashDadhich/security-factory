@@ -113,7 +113,7 @@ jobs:
         run: >-
           python -m factory.manifest create
           --config "$CONFIG_PATH" --mode "$MODE" --factory-ref "$FACTORY_REF" --issue "$ISSUE" --iteration "$ITERATION"
-          --stage plan --stage threat-model --stage codegen-ai --stage codegen-commit --stage review --stage passthrough --stage hello-ai --stage secrets --stage sast-semgrep --stage sast-codeql --stage sast-eslint --stage sast-swiftlint --stage sast-codeql-swift --stage apple-build --stage deps-sbom --stage dast-web --stage gate
+          --stage plan --stage threat-model --stage codegen-ai --stage codegen-commit --stage review --stage passthrough --stage hello-ai --stage secrets --stage sast-semgrep --stage sast-codeql --stage sast-eslint --stage sast-swiftlint --stage sast-codeql-swift --stage apple-build --stage apple-checks --stage deps-sbom --stage dast-web --stage gate
           --out out/setup/run-manifest.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -732,6 +732,17 @@ jobs:
         with:
           name: apple-build
           path: out/apple-build/
+          if-no-files-found: error
+      - name: apple checks
+        env:
+          PLATFORM: ${{ needs.setup.outputs.platform }}
+        run: |
+          app=$(ls -d build/apple/Build/Products/Release/*.app)
+          python -m factory.stages.apple_checks --app "$app" --platform "$PLATFORM" --src . --out out/apple-checks
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apple-checks
+          path: out/apple-checks/
           if-no-files-found: error
 
   sast-swiftlint:
