@@ -1,0 +1,23 @@
+{
+  "file_name": "app.ipa",
+  "app_name": "FactoryTestIOS",
+  "appsec": {
+    "high": [
+      {"title": "Binary does not use ARC", "description": "The binary is not compiled with Automatic Reference Counting.", "section": "binary"}
+    ],
+    "warning": [
+      {"title": "App Transport Security is relaxed", "description": "Cleartext\n   traffic is allowed for some domains.", "section": "network"},
+      {"title": "App Transport Security is relaxed", "description": "duplicate entry", "section": "network"}
+    ],
+    "info": [
+      {"title": "Uses the Keychain", "description": "The app stores data in the Keychain.", "section": "code"}
+    ],
+    "secure": [
+      {"title": "Stack canary enabled", "description": "Good.", "section": "binary"}
+    ],
+    "hotspot": [
+      {"title": "Hotspot only", "description": "ignored", "section": "code"}
+    ],
+    "total_trackers": 0
+  }
+}

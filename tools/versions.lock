@@ -93,6 +93,12 @@ kind = "container"
 image = "docker.io/curlimages/curl@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93"
 
 [[tool]]
+name = "mobsf"
+version = "v4.6.2"
+kind = "container"
+image = "docker.io/opensecurity/mobile-security-framework-mobsf@sha256:3106df067a5276ec24d55f4bbd812b31844e189029bd98f149519ede8aa5f4a9"
+
+[[tool]]
 name = "pytm"
 version = "1.4.0"
 kind = "venv"
