@@ -51,7 +51,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 20 | second-agent-review | done |
 | 21 | fix-loop | done |
 | 22 | check-mode-wiring | done |
-| 23 | vulnerable-web-acceptance | in progress |
+| 23 | vulnerable-web-acceptance | done |
 | 24 | improvement-loop | todo |
 | 25 | zap-authenticated-scan | todo |
 | 26 | macos-build-and-sast | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 22 are done. Next in order is chunk 23 (vulnerable-web-acceptance); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
+Chunks 00 to 23 are done. Next in order is chunk 24 (improvement-loop); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -183,7 +183,35 @@ Chunks 00 to 22 are done. Next in order is chunk 23 (vulnerable-web-acceptance);
 - Check mode (chunk 22): job `ai-eligible` (needs `setup`, no AI, outputs `run_ai`, `reason`) runs `python -m factory.eligibility` (`decide(mode, event, head_is_fork, on_default_branch, has_secret)`); reasons `fork-pr`, `work-in-progress-push` (also any other event), `no-secret`. `threat-model` and `review` are matrix stages in check mode with `Stage.ai=True`; the gate allows their skip only in check mode when `needs["ai-eligible"]` succeeded with `run_ai=false` and a known reason (else `stage-missing`). `gate-result.json` has `ai_skipped`; `report.md` has `AI stages skipped: <reason>`. `ai-eligible` is ignored by the gate like `setup`. Check-mode `threat-model` runs `--diff in/diff/diff.patch` instead of `--plan` (STRIDE only; LINDDUN and attack tree threats from `security/` are kept; no previous model means a bootstrap from the code). `record` copies `threat-model/threats.json` and `review/findings.json` to `latest/threats.json` and `latest/review.json`, and skips Dependabot PRs. Job graphs per mode are in `docs/pipeline.md` ("Check mode").
 - Scanners that ran on `factory-test-web` PR #9 still wait for `review`; a skipped `review` does not hold them back (they use `!cancelled()`).
 
+- Vulnerable web acceptance (chunk 23): repo `AakashDadhich/factory-vuln-web` (public, topic `security-factory`, App installed with Actions read and write). App: Express 5.3.0, better-sqlite3 13.0.3, lodash 4.17.15, TypeScript 7.0.2; planted flaws in `src/app.ts` (SQLi `/api/user`, reflected XSS `/search`, command injection `/api/ping`, `eval` `/api/calc`, hardcoded fake `apiKey`, cookie without flags `/login`, `_.merge` of the body `/api/settings`), committed `.env` with made-up values, no helmet. Its stub triggers on push, pull_request and workflow_dispatch with `mode: check` only. Its Dockerfile installs `python3 make g++` in a base stage because better-sqlite3 13 has no prebuilt binary for the runner's Node (the first run failed `dast-web` on that).
+- `expected-findings.yml` (in factory-vuln-web) entries: `id`, `stage` (name or list), `rule_id` regex and/or `cwe` (either matches), optional `path` regex, `min_severity`, `optional`. `python -m factory.acceptance --repo R --run-id N --expected f [--artifacts dir] [--out dir]` downloads the `gate` artifact, needs gate `fail` and every non-optional row matched, exits 1 otherwise. A finding counts for a stage if the stage is among its merged `stages`, so a merged finding can satisfy another flaw's CWE (the XSS row was matched by the merged code-injection finding, which also carries CWE-79). `python -m factory.acceptance_run --repo R --ref main --github-output f` dispatches the stub, finds the new run, polls every 30 s up to 60 min. Workflow `.github/workflows/acceptance.yml` (`workflow_dispatch` plus Mondays 04:17 UTC) mints the App token with `permission-actions: write` and `permission-contents: read`, uploads artifact `acceptance`. Spec in `docs/acceptance.md`.
+- A `workflow_dispatch` on the default branch is AI-eligible, so every acceptance run spends Claude allowance (`threat-model` and `review`). A usage-limit hit fails the gate for the wrong reason; re-run after the reset.
+- Bug found and fixed in chunk 23: `review` crashed when there was no base commit (first push to a branch, or `workflow_dispatch`) because the empty tree is not a commit; `review.resolve` now accepts `EMPTY_TREE` and diffs with two arguments. The check-mode `threat-model` diff already used the two-argument form.
+- Open for the owner: `FACTORY_APP_PRIVATE_KEY` on `factory-vuln-web` is in OpenSSH format, so `record` fails there ("only PKCS#8 is supported"); the secret needs the original `.pem`. Acceptance does not depend on `record`. Leftover branches on factory-vuln-web: `lock-tmp` (throwaway lockfile workflow) and `build` (same commit as `main`); delete after the owner agrees.
+- Acceptance result table (run `41019054583`, gate `fail`, 3 critical, 18 high):
+
+| Expectation | Expected stage | Result | Caught by | Finding |
+|---|---|---|---|---|
+| sqli | sast-codeql, sast-semgrep | matched | sast-codeql, sast-semgrep | js/sql-injection (high) |
+| xss | sast-codeql, sast-semgrep | matched | sast-codeql, sast-semgrep | js/reflected-xss (high) |
+| cmdi | sast-codeql, sast-semgrep | matched | sast-codeql, sast-semgrep | js/command-line-injection (critical) |
+| eval | sast-eslint | matched | sast-eslint | security/detect-eval-with-expression (high) |
+| hardcoded-key | secrets | matched | secrets | generic-api-key (high) |
+| env-file | secrets | matched | secrets | committed-env-file (high) |
+| lodash | deps-sbom | matched | deps-sbom | CVE-2026-4800, CVE-2020-8203, CVE-2021-23337 (high) |
+| security-headers | dast-web | matched | dast-web | CSP not set, anti-clickjacking, X-Content-Type-Options (medium/low) |
+| cookie-flags | dast-web | matched | dast-web | Cookie No HttpOnly Flag (low) |
+| review-sqli (optional) | review | matched | review | review-cwe-89 (critical) |
+
 ## Session log
+
+### 2026-10-30, chunk 23 (vulnerable-web-acceptance)
+Added `factory/acceptance.py`, `factory/acceptance_run.py`, `.github/workflows/acceptance.yml`, `tests/test_acceptance.py`, `tests/test_acceptance_run.py`, `docs/acceptance.md`, and in `factory-vuln-web` the app, Dockerfile, `openapi.yaml`, `.factory.yml`, `expected-findings.yml`, stub and README. Master session pushed (the sandbox blocked chunk-session pushes). Fixed a `review` crash on a missing base (`68c8637`) and the table separator (`23472c4`).
+- Done-when: selftest run `41018891810` on `23472c4`, all 8 jobs `success`. Pass.
+- Done-when: `gh workflow run acceptance.yml`, run `41019054583` green; the target run (`workflow_dispatch` on factory-vuln-web main) has gate `fail`. Pass. An earlier run `41018027752` also passed but its target `review` job crashed on the empty-tree base (fixed afterwards).
+- Done-when: artifact table: every non-optional expectation matched with the catching stage shown, and the optional `review-sqli` matched too. Pass.
+- Done-when: the target gate summary lists the planted issues as blocking: 3 critical and 18 high, including SQL injection, command injection, code injection, XSS, the API key, `.env`, lodash CVEs. Pass.
+- Done-when: result table recorded in Notes above. Pass.
 
 ### 2026-10-30, chunk 22 (check-mode-wiring)
 Added `factory/eligibility.py`, `ai-eligible` job, check-mode `threat-model` (diff, no plan) and `review` wiring, matrix `ai` stages, gate skip rules and summary line, record `latest/` additions, `tests/test_eligibility.py`, `tests/test_check_mode_threat_model.py`, docs. First selftest (`40963890053`) failed one test on list order (my test bug), fixed in `afcd28d`. Master session pushed.
