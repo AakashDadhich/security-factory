@@ -55,14 +55,14 @@ Read this file first in every session, then read the one chunk file you were giv
 | 24 | improvement-loop | done |
 | 25 | zap-authenticated-scan | done |
 | 26 | macos-build-and-sast | done |
-| 27 | apple-scripted-checks | todo |
+| 27 | apple-scripted-checks | done |
 | 28 | ios-build-and-mobsf | todo |
 | 29 | apple-vuln-acceptance | todo |
 | 30 | template-and-release | todo |
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 26 are done. Next in order is chunk 27 (apple-scripted-checks); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
+Chunks 00 to 27 are done. Next in order is chunk 28 (ios-build-and-mobsf); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -220,7 +220,17 @@ Chunks 00 to 26 are done. Next in order is chunk 27 (apple-scripted-checks); che
 - Both OSV-Scanner ("Scanned .../Package.resolved file and found 1 package") and Syft (`pkg:swift/github.com/apple/swift-log@1.6.3`) read the root `Package.resolved`; `deps_sbom` needed no change.
 - A macOS run takes about 25 minutes (the traced CodeQL build is the long pole). Chunk 27/28 will add checks for entitlements, sandboxing and privacy manifests on the same `apple-build` artifact.
 
+- Apple scripted checks (chunk 27): `python -m factory.stages.apple_checks --app <path.app> --platform <macos|ios> --src . --out out/apple-checks` (`make apple-checks APP= PLATFORM=`). Runs as a step inside the `apple-build` job (no separate job) and uploads artifact `apple-checks`; the matrix stage `apple-checks` is macOS only, so chunk 28 should add `ios` to its `platforms` and run the same command in the iOS build job. `factory/apple/inspect.py` has plistlib parsers plus `read_entitlements` (`codesign -d --entitlements :-`) and `read_code_flags` (`codesign -dv --verbose=4`); plutil is not used. Rule ids are in `docs/pipeline.md`. Entitlement and required-reason rule ids are per key or category (fingerprints ignore the message). Patterns: `factory/apple/required_reason_apis.yml`.
+- Ad-hoc signed Release builds get `get-task-allow` injected by Xcode, so `apple_build` now passes `CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO` (the first live run caught it as `get-task-allow-release`).
+- Selftest `macos-smoke` runs the codesign integration test with `FACTORY_REQUIRE_CODESIGN=1`.
+
 ## Session log
+
+### 2026-10-30, chunk 27 (apple-scripted-checks)
+Added `factory/apple/` (`inspect.py`, `required_reason_apis.yml`), `factory/stages/apple_checks.py`, the `apple-checks` step and artifact in `apple-build`, the macOS matrix entry, a `macos-smoke` codesign integration step, Makefile target, docs and `tests/test_apple_checks.py` with fixtures. The first live run flagged `get-task-allow-release` because Xcode injects it into ad-hoc Release builds; fixed with `CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO` (`c0030c3`). Used plistlib only (no plutil) and `codesign --entitlements :-`.
+- Done-when: selftest run `41132258649` on `c0030c3`, all jobs `success` (Linux parsers, `macos-smoke` codesign integration). Pass.
+- Done-when: `factory-test-macos` run `41141921201`: `apple-checks` artifact `findings.json` is `[]` (zero high), gate `PASS` (0 critical, 0 high, 1 low, 6 info). Pass. (The earlier run `41124575060` failed on the injected `get-task-allow`.)
+- Done-when: scratch branch `scratch/sandbox-off` (sandbox set to false) run `41143988347`: `apple-checks` has `macos-app-sandbox-disabled` (high), gate `FAIL` (1 high), only the gate job failed. Pass. Test checkout is back on `main`; the scratch branch is left on the remote for the owner to delete.
 
 ### 2026-10-30, chunk 26 (macos-build-and-sast)
 Added the `xcode`, `xcodegen` and `swiftlint` pins and the `install_dir` and `xcode` installer support, `factory/stages/apple_build.py`, `factory/stages/swiftlint.py`, `tools/swiftlint/.swiftlint.yml`, jobs `apple-build`, `sast-swiftlint`, `codeql-swift-analyze` and `sast-codeql-swift`, matrix entries, Makefile targets, docs, and tests (`test_swiftlint.py`, `test_apple_build.py`, `test_macos_stages.py`, installer tests). Built `factory-test-macos` locally; the master session pushed it. Four live runs found and fixed: swift-log needing Swift 6.2, `ditto` run with a relative app path, Python failing under the CodeQL tracer (moved the conversion to a Linux job), and SwiftLint scanning `.factory/`.
