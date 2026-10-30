@@ -67,12 +67,24 @@ def git(repo: Path, *args: str, check: bool = True) -> str:
     return result.stdout.decode(errors="replace") if result.returncode == 0 else ""
 
 
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+
 def resolve(repo: Path, rev: str) -> str:
-    return git(repo, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}").strip()
+    sha = git(repo, "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}", check=False).strip()
+    if not sha and rev == EMPTY_TREE:
+        return EMPTY_TREE
+    if not sha:
+        raise ReviewError(f"cannot resolve {rev!r} to a commit")
+    return sha
+
+
+def revision_range(base: str, head: str) -> list[str]:
+    return [base, head] if base == EMPTY_TREE else [f"{base}...{head}"]
 
 
 def changed_paths(repo: Path, base: str, head: str) -> list[str]:
-    raw = git(repo, "diff", "--no-renames", "--no-ext-diff", "--name-only", "-z", f"{base}...{head}")
+    raw = git(repo, "diff", "--no-renames", "--no-ext-diff", "--name-only", "-z", *revision_range(base, head))
     return sorted(p for p in raw.split("\0") if p and not p.startswith(SKIPPED_PREFIXES))
 
 
@@ -93,7 +105,7 @@ def parse_file_diff(path: str, text: str) -> FileDiff:
 def file_diffs(repo: Path, base: str, head: str) -> list[FileDiff]:
     out = []
     for path in changed_paths(repo, base, head):
-        text = git(repo, "diff", "--no-renames", "--no-ext-diff", "--no-textconv", f"--unified={CONTEXT_LINES}", f"{base}...{head}", "--", path)
+        text = git(repo, "diff", "--no-renames", "--no-ext-diff", "--no-textconv", f"--unified={CONTEXT_LINES}", *revision_range(base, head), "--", path)
         diff = parse_file_diff(path, text)
         if diff.hunks:
             out.append(diff)

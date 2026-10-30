@@ -351,3 +351,23 @@ def test_manifest_lists_the_review_stage():
 @pytest.mark.parametrize(("mode", "expected"), [("spec", True), ("change", True), ("fix", True), ("check", True)])
 def test_matrix_expects_review_by_mode(mode, expected):
     assert ("review" in [s.name for s in stage_matrix.expected("web", mode)]) is expected
+
+
+def test_empty_tree_base_reviews_every_file(tmp_path, responses):
+    repo, _, head = make_repo(tmp_path)
+    tree = sh(repo, "hash-object", "-t", "tree", "/dev/null")
+    assert tree == review.EMPTY_TREE
+    assert review.resolve(repo, tree) == review.EMPTY_TREE
+    assert review.changed_paths(repo, tree, head) == ["src/app.ts", "src/notes.ts"]
+    responses()
+    assert run_review(repo, tree, head, tmp_path / "out") == 0
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert summary["base"] == review.EMPTY_TREE
+    assert sorted(summary["files_reviewed"]) == ["src/app.ts", "src/notes.ts"]
+
+
+def test_unresolvable_base_is_an_error(tmp_path):
+    repo, _, head = make_repo(tmp_path)
+    with pytest.raises(review.ReviewError, match="cannot resolve"):
+        review.resolve(repo, "no-such-ref")
+    assert review.resolve(repo, head) == head
