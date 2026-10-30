@@ -1,0 +1,24 @@
+excluded:
+  - .factory
+  - .build
+  - build
+  - Pods
+  - Carthage
+  - DerivedData
+
+disabled_rules:
+  - line_length
+  - todo
+  - trailing_whitespace
+
+custom_rules:
+  print_of_secret:
+    name: "Print of a secret value"
+    regex: '(?i)\b(print|debugPrint|dump|NSLog)\s*\([^)\n]*(token|password|passwd|passphrase|secret|api_?key|credential)'
+    message: "A secret-like value is written to the log. Remove it or log a redacted form."
+    severity: error
+  userdefaults_secret_key:
+    name: "Secret stored in UserDefaults"
+    regex: '(?i)\bUserDefaults\b[^\n]*(\.(set|setValue)\([^\n]*forKey:\s*|\[\s*)"[^"\n]*(token|password|passwd|passphrase|secret|api_?key|credential)'
+    message: "UserDefaults is not encrypted storage. Keep secrets in the Keychain."
+    severity: error
