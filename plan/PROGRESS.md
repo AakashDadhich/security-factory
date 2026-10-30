@@ -53,7 +53,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 22 | check-mode-wiring | done |
 | 23 | vulnerable-web-acceptance | done |
 | 24 | improvement-loop | done |
-| 25 | zap-authenticated-scan | todo |
+| 25 | zap-authenticated-scan | done |
 | 26 | macos-build-and-sast | todo |
 | 27 | apple-scripted-checks | todo |
 | 28 | ios-build-and-mobsf | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 24 are done. Next in order is chunk 25 (zap-authenticated-scan); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
+Chunks 00 to 25 are done. Next in order is chunk 26 (macos-build-and-sast); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -208,7 +208,18 @@ Chunks 00 to 24 are done. Next in order is chunk 25 (zap-authenticated-scan); ch
 - Observed in the live change run: the model wrote `touched_elements` as descriptive names, so 5 of 8 did not match pytm element names and were ignored (3 matched, so the focus still worked). A later tweak could pass the existing `elements.json` names to the change prompt, or match loosely.
 - Test project state: notes feature merged to `factory-test-web` main (PR #10, merge commit `66a93ce`), so `security/` and the record exist. Issue #11 "Rate-limit the notes endpoints" (label `factory:change`) is open with branch `factory/11` (gate passed, not merged). Issues #3 (spec), #4, #5 stay open.
 
+- Authenticated ZAP (chunk 25): optional `web.auth` in `.factory.yml` (`type` form|json, `login_url` path, `username_field`, `password_field`, `username_env`, `password_env`, and at least one of `logged_in_regex` / `logged_out_regex`; schema in `schemas/factory-config.schema.json`). `harness.app_env` adds `SEED_TEST_USER=1` and checks both env names are set in `.env.example`; `dast_web.run` reads the same values. `plan.render(..., auth=, credentials=)` fills the `{{AUTH_CONTEXT}}` and `{{USER}}` placeholders in `zap/full.yaml` (context authentication, response verification, cookie session management, user `test-user`; spider and activeScan run as that user). Login URL is always `http://app:<port>` plus the path; auth is full-plan only. The rendered plan holding the test password is deleted right after ZAP exits. Snapshot `tests/snapshots/dast-full-auth-json.yaml`; the form variant is covered by assertions only. Spec in `docs/pipeline.md` ("Authenticated scanning").
+- factory-vuln-web now has `POST /login` (JSON, sets cookie `sid`), `GET /account/notes?q=` (reflected XSS, 401 `login required` without a session), `SEED_TEST_USER` seeding, `.env.example` (`TEST_USERNAME=zap-test`, a made-up `TEST_PASSWORD`), openapi entries and expectation `authenticated-xss` (dast-web, CWE-79, path `/account/notes`).
+- Acceptance passes even when the target gate fails only because of stage failures (it needs gate `fail` and every non-optional row matched). Run 41024790955 passed while its target had `threat-model` and `review` failing with exit 75; behaviour left unchanged on purpose, ask the owner before tightening it.
+
 ## Session log
+
+### 2026-10-30, chunk 25 (zap-authenticated-scan)
+Added `web.auth` to the config schema, `harness.auth_credentials` and `app_env`, `plan.auth_block` and auth rendering, stage wiring, tests (`test_dast_plan.py`, `test_config.py`, snapshot), docs, and in `factory-vuln-web` the login, the authenticated notes page, seeding, `.env.example`, openapi and the new expectation. Pushed with owner pre-approval.
+- Done-when: selftest run `41024589197` on `010a6d6`, all 8 jobs `success`. Pass.
+- Done-when: `acceptance.yml` run `41047582825` success (target run `41047609649`, with `threat-model` and `review` running cleanly after the usage-limit reset). Table row `authenticated-xss | dast-web | matched | 40012 (high) at http://app:3000/account/notes?q=...`. Pass. (The earlier run `41024790955` also passed but its target hit exit 75 in the AI stages.)
+- Done-when: ZAP report of target run `41047609649` lists `/account/notes` (XSS reflected and DOM, CSP, anti-clickjacking) and `sites.json` has `/account` and `/account/notes`. Pass.
+- Done-when: clean `factory-test-web` (no `web.auth`) workflow_dispatch run `41048590247`: `dast-web`, `gate`, `record` all `success`. Pass.
 
 ### 2026-10-30, chunk 24 (improvement-loop)
 Added `prompts/plan-change.md`, change mode in `factory/stages/plan.py`, `changed_features` and `touched_elements` in `schemas/plan.schema.json`, STRIDE focus in `factory/stages/threat_model.py`, `factory/threatmodel/diff.py`, `factory/sbomnote.py`, workflow wiring, `tests/test_change_mode.py` and docs. The first live run failed with `startup_failure` (permission the stub does not grant); fixed in `3d414b0`. Master session pushed.
