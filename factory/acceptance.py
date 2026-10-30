@@ -102,7 +102,7 @@ def evaluate(expectations: list[dict], report: list[dict], gate_result: dict) ->
             status, caught, finding = "matched", _caught_by(exp, best), f"{best['rule_id']} ({best['severity']}) at {_location(best)}"
         else:
             status, caught, finding = ("optional-missed" if exp["optional"] else "missed"), "", ""
-        rows.append({"id": exp["id"], "expected_stage": " | ".join(exp["stages"]), "optional": exp["optional"], "status": status, "caught_by": caught, "finding": finding})
+        rows.append({"id": exp["id"], "expected_stage": ", ".join(exp["stages"]), "optional": exp["optional"], "status": status, "caught_by": caught, "finding": finding})
     gate_failed = gate_result.get("status") == "fail"
     ok = gate_failed and not any(r["status"] == "missed" for r in rows)
     return {"ok": ok, "gate_status": gate_result.get("status"), "gate_failed_as_required": gate_failed, "rows": rows}

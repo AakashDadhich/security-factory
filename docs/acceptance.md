@@ -28,4 +28,4 @@ An entry needs `rule_id` or `cwe`; either is enough to match. A finding counts w
 
 ## Check-mode event
 
-The stub triggers the run with `workflow_dispatch`. Check mode treats that event as not eligible for AI stages, so `threat-model` and `review` skip with reason `work-in-progress-push`. The review expectation is therefore optional.
+The stub triggers the run with `workflow_dispatch` on `main`. Check mode treats that as a default-branch run, so the AI stages (`threat-model`, `review`) run on it and use the owner's Claude allowance. The review expectation is still optional because the model is non-deterministic. With no `before` commit, the review job diffs against the empty tree.
