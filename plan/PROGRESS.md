@@ -51,7 +51,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 20 | second-agent-review | done |
 | 21 | fix-loop | done |
 | 22 | check-mode-wiring | done |
-| 23 | vulnerable-web-acceptance | todo |
+| 23 | vulnerable-web-acceptance | in progress |
 | 24 | improvement-loop | todo |
 | 25 | zap-authenticated-scan | todo |
 | 26 | macos-build-and-sast | todo |
