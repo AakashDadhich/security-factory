@@ -52,7 +52,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 21 | fix-loop | done |
 | 22 | check-mode-wiring | done |
 | 23 | vulnerable-web-acceptance | done |
-| 24 | improvement-loop | todo |
+| 24 | improvement-loop | in progress |
 | 25 | zap-authenticated-scan | todo |
 | 26 | macos-build-and-sast | todo |
 | 27 | apple-scripted-checks | todo |
