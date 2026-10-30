@@ -266,3 +266,74 @@ def test_integration_real_codesign_reads_flags_and_entitlements(tmp_path):
     subprocess.run(["codesign", "--force", "--sign", "-", str(plain)], check=True, capture_output=True)
     assert ins.read_code_flags(plain)["runtime"] is False
     assert ins.read_entitlements(plain) == {}
+
+
+def no_codesign(cmd, **kwargs):
+    raise AssertionError("codesign must not run for an unsigned iOS build")
+
+
+def ios_project(tmp_path, entitlements: str | None, spec_text: str | None = None) -> Path:
+    src = tmp_path / "src"
+    src.mkdir(exist_ok=True)
+    setting = "CODE_SIGN_ENTITLEMENTS: App.entitlements" if entitlements else "FOO: bar"
+    default = f"name: Demo\ntargets:\n  Demo:\n    type: application\n    platform: iOS\n    settings:\n      base:\n        {setting}\n"
+    (src / "project.yml").write_text(spec_text or default)
+    if entitlements:
+        (src / "App.entitlements").write_bytes(fx(entitlements))
+    return src
+
+
+def run_ios(tmp_path, spec: Path | None):
+    app = make_app(tmp_path / "bundle", "ios")
+    return stage.run(app, "ios", tmp_path / "src", tmp_path / "out", no_codesign, project_spec=spec)
+
+
+def test_ios_never_calls_codesign_and_is_clean_without_entitlements(tmp_path):
+    src = ios_project(tmp_path, None)
+    assert run_ios(tmp_path, src / "project.yml") == []
+
+
+def test_ios_without_a_spec_reads_no_entitlements(tmp_path):
+    ios_project(tmp_path, None)
+    assert run_ios(tmp_path, None) == []
+
+
+def test_ios_reads_entitlements_from_the_file_the_spec_names(tmp_path):
+    src = ios_project(tmp_path, "entitlements-task-allow.xml")
+    result = rules(run_ios(tmp_path, src / "project.yml"))
+    assert result["get-task-allow-release"]["severity"] == "high"
+    assert "entitlement-cs-disable-library-validation" in result
+
+
+def test_ios_entitlements_file_may_be_declared_with_the_entitlements_key(tmp_path):
+    spec = "name: Demo\ntargets:\n  Demo:\n    type: application\n    platform: iOS\n    entitlements:\n      path: App.entitlements\n"
+    src = ios_project(tmp_path, "entitlements-task-allow.xml", spec)
+    assert "get-task-allow-release" in rules(run_ios(tmp_path, src / "project.yml"))
+
+
+def test_spec_entitlement_paths_skip_non_application_targets(tmp_path):
+    spec = tmp_path / "project.yml"
+    spec.write_text("name: X\ntargets:\n  Lib:\n    type: framework\n    settings:\n      base:\n        CODE_SIGN_ENTITLEMENTS: lib.entitlements\n  App:\n    type: application\n    settings:\n      base:\n        CODE_SIGN_ENTITLEMENTS: sub/app.entitlements\n")
+    assert stage.spec_entitlement_paths(spec) == [tmp_path / "sub" / "app.entitlements"]
+
+
+def test_missing_entitlements_file_fails_the_stage(tmp_path):
+    src = ios_project(tmp_path, "entitlements-good.xml")
+    (src / "App.entitlements").unlink()
+    with pytest.raises(stage.StageError, match="cannot read"):
+        run_ios(tmp_path, src / "project.yml")
+
+
+def test_bad_spec_fails_the_stage(tmp_path):
+    spec = tmp_path / "project.yml"
+    spec.write_text("a: [unclosed\n")
+    with pytest.raises(stage.StageError, match="XcodeGen spec"):
+        stage.spec_entitlement_paths(spec)
+
+
+def test_ios_still_runs_ats_privacy_and_keychain_checks_on_unsigned_apps(tmp_path):
+    app = make_app(tmp_path / "bundle", "ios", info="info-ats-arbitrary.plist", privacy=None)
+    src = tmp_path / "src"
+    src.mkdir()
+    result = rules(stage.run(app, "ios", src, tmp_path / "out", no_codesign))
+    assert "ats-allows-arbitrary-loads" in result and "privacy-manifest-missing" in result

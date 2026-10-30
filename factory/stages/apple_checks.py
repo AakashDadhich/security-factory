@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from factory import findings
+from factory import config, findings
 from factory.apple import inspect as ins
 from factory.apple.inspect import InspectError
 from factory.findings import FindingsError
@@ -45,6 +45,33 @@ def make(rule: str, title: str, severity: str, path: str, description: str, reme
         location={"path": path, "start_line": line, "end_line": line}, cwe=cwe,
         description=description, remediation=remediation,
     )
+
+
+def spec_entitlement_paths(spec: Path) -> list[Path]:
+    try:
+        data = yaml.safe_load(spec.read_text())
+    except (OSError, yaml.YAMLError) as e:
+        raise StageError(f"cannot read the XcodeGen spec {spec}: {e}") from e
+    targets = data.get("targets") if isinstance(data, dict) else None
+    found = []
+    for target in (targets or {}).values():
+        if not isinstance(target, dict) or target.get("type") != "application":
+            continue
+        base = (target.get("settings") or {}).get("base") or {}
+        declared = (target.get("entitlements") or {}).get("path") or base.get("CODE_SIGN_ENTITLEMENTS")
+        if isinstance(declared, str):
+            found.append(spec.parent / declared)
+    return found
+
+
+def project_entitlements(spec: Path) -> dict:
+    merged: dict = {}
+    for path in spec_entitlement_paths(spec):
+        try:
+            merged.update(ins.read_plist(path))
+        except InspectError as e:
+            raise StageError(str(e)) from e
+    return merged
 
 
 def entitlement_rule(key: str) -> str:
@@ -175,7 +202,7 @@ def check_keychain(hits: list) -> list[dict]:
             for rule, path, line in hits]
 
 
-def run(app: str | Path, platform: str, src: str | Path, out: str | Path, runner=None, apis: Path = APIS) -> list[dict]:
+def run(app: str | Path, platform: str, src: str | Path, out: str | Path, runner=None, apis: Path = APIS, project_spec: str | Path | None = None) -> list[dict]:
     app, src, out = Path(app), Path(src), Path(out)
     if platform not in ("macos", "ios"):
         raise StageError(f"unknown platform {platform!r}")
@@ -184,8 +211,12 @@ def run(app: str | Path, platform: str, src: str | Path, out: str | Path, runner
     paths = bundle_paths(app, platform)
     rel = lambda p: f"{app.name}/{p.relative_to(app).as_posix()}"
     try:
-        flags = ins.read_code_flags(app, runner)
-        entitlements = ins.read_entitlements(app, runner)
+        if platform == "ios":
+            flags = {"runtime": False, "names": [], "value": 0}
+            entitlements = project_entitlements(Path(project_spec)) if project_spec else {}
+        else:
+            flags = ins.read_code_flags(app, runner)
+            entitlements = ins.read_entitlements(app, runner)
         info = ins.read_plist(paths["info"])
     except InspectError as e:
         raise StageError(str(e)) from e
@@ -216,10 +247,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--platform", required=True, choices=("macos", "ios"))
     parser.add_argument("--src", default=".")
     parser.add_argument("--out", default="out/apple-checks")
+    parser.add_argument("--config", help=".factory.yml; for iOS the unsigned app has no entitlements, so they are read from the files its XcodeGen spec names")
     args = parser.parse_args(argv)
     try:
-        run(args.app, args.platform, args.src, args.out)
-    except (StageError, FindingsError, OSError, yaml.YAMLError) as e:
+        spec = None
+        if args.config:
+            spec = Path(args.src) / config.load(args.config)["apple"]["project_spec"]
+        run(args.app, args.platform, args.src, args.out, project_spec=spec)
+    except (StageError, FindingsError, config.ConfigError, OSError, yaml.YAMLError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     return 0
