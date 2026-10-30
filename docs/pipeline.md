@@ -151,6 +151,12 @@ Job `dast-web` (web only, required in the gate). `python -m factory.dast.harness
 
 `python -m factory.stages.dast_web --plan baseline` renders `zap/baseline.yaml` (target templated from `web.port`), runs the pinned ZAP image on the same network with `zap.sh -cmd -autorun`, and converts `zap-report.json` to findings (riskcode 3 high, 2 medium, 1 low, 0 info; CWE from `cweid`; fingerprint from plugin id, URL path and method). The artifact `dast-web` holds `findings.json`, `zap-report.json` and `zap-report.html`. `harness down` runs with `if: always()`.
 
+### Authenticated scanning
+
+An optional `web.auth` block in `.factory.yml` gives ZAP a seeded test login: `type` (`form` or `json`), `login_url` (a path on the app), `username_field`, `password_field`, `username_env`, `password_env` (names of variables in `.env.example`), and `logged_in_regex` and/or `logged_out_regex` (at least one). The schema rejects a block with any of the first six missing.
+
+When it is set, `harness up` checks that `.env.example` defines both variables and starts the app with every `.env.example` variable plus `SEED_TEST_USER=1`; the app is expected to create that user at startup. The credentials are fake test values for the throwaway container only. The full plan then adds a ZAP context with the authentication method (`form` or `json`, request body built from the field names with ZAP's `{%username%}` and `{%password%}` placeholders), response verification from the regexes, cookie session management and one user, and the spider and active scan run as that user. The login URL is always `http://app:<port>` plus the path, so the target guard still applies, and authentication is only part of the full plan. The rendered plan file (which holds the test password) is deleted as soon as ZAP exits. Without `web.auth` the rendered plan is unchanged.
+
 ## Workflow inputs
 
 | Input | Default | Meaning |
