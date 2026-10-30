@@ -90,7 +90,7 @@ def test_app_private_key_and_claude_token_stay_out_of_the_macos_jobs():
 
 
 
-def test_codeql_swift_conversion_forces_arm64_python():
+def test_codeql_swift_conversion_runs_without_the_tracer_preload():
     steps = jobs()["sast-codeql-swift"]["steps"]
     convert = next(s for s in steps if s.get("name") == "convert SARIF to findings")
-    assert convert["run"].lstrip().startswith("arch -arm64 python -m factory.sarif")
+    assert convert["run"].lstrip().startswith("env -u DYLD_INSERT_LIBRARIES -u SEMMLE_PRELOAD_libtrace python -m factory.sarif")
