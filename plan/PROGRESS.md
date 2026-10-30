@@ -52,7 +52,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 21 | fix-loop | done |
 | 22 | check-mode-wiring | done |
 | 23 | vulnerable-web-acceptance | done |
-| 24 | improvement-loop | in progress |
+| 24 | improvement-loop | done |
 | 25 | zap-authenticated-scan | todo |
 | 26 | macos-build-and-sast | todo |
 | 27 | apple-scripted-checks | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 23 are done. Next in order is chunk 24 (improvement-loop); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
+Chunks 00 to 24 are done. Next in order is chunk 25 (zap-authenticated-scan); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -203,7 +203,18 @@ Chunks 00 to 23 are done. Next in order is chunk 24 (improvement-loop); check `p
 | cookie-flags | dast-web | matched | dast-web | Cookie No HttpOnly Flag (low) |
 | review-sqli (optional) | review | matched | review | review-cwe-89 (critical) |
 
+- Improvement loop (chunk 24): spec in `docs/pipeline.md` ("Improvement loop (change mode)"). `python -m factory.stages.plan ... --current-plan security/plan.json --record in/record` is change mode (prompt `prompts/plan-change.md`; `record.json` has `latest_findings` and the last 3 failed `runs/`). `plan.json` gets `changed_features` (model list plus any new or differing feature) and `touched_elements`; dropped feature or requirement ids exit 2; `asvs_level` is `max(spec rule, current)`. `threat_model.focus_elements` keeps only touched names that exist in the pytm model; STRIDE then runs on those (`touched.json`, schema enum limited to them), other STRIDE threats carry over unchanged via `merge(..., keep=)`; `passes.json` stride has `focus` and `ignored`. `python -m factory.threatmodel.diff --base --head --out-md` and `python -m factory.sbomnote` are new. `next-step` computes the threat diff from `security/threats.json` on the default branch vs `factory/<issue>` and `fixloop comment --extra` puts it before the gate report; `record` comments `latest/sbom-diff.json` on issue `n` after a passing default-branch push whose merged PR branch is `factory/<n>`.
+- Reusable workflow jobs may not request a permission the project stub does not grant, or the whole run fails with `startup_failure` (`pull-requests: read` on `record` did this). `test_no_job_asks_for_a_permission_the_project_stub_does_not_grant` guards it.
+- Observed in the live change run: the model wrote `touched_elements` as descriptive names, so 5 of 8 did not match pytm element names and were ignored (3 matched, so the focus still worked). A later tweak could pass the existing `elements.json` names to the change prompt, or match loosely.
+- Test project state: notes feature merged to `factory-test-web` main (PR #10, merge commit `66a93ce`), so `security/` and the record exist. Issue #11 "Rate-limit the notes endpoints" (label `factory:change`) is open with branch `factory/11` (gate passed, not merged). Issues #3 (spec), #4, #5 stay open.
+
 ## Session log
+
+### 2026-10-30, chunk 24 (improvement-loop)
+Added `prompts/plan-change.md`, change mode in `factory/stages/plan.py`, `changed_features` and `touched_elements` in `schemas/plan.schema.json`, STRIDE focus in `factory/stages/threat_model.py`, `factory/threatmodel/diff.py`, `factory/sbomnote.py`, workflow wiring, `tests/test_change_mode.py` and docs. The first live run failed with `startup_failure` (permission the stub does not grant); fixed in `3d414b0`. Master session pushed.
+- Done-when: selftest run `41020752612` on `3d414b0`, all 8 jobs `success`. Pass.
+- Done-when: after the notes feature was merged (PR #10), issue #11 "Rate-limit the notes endpoints" labelled `factory:change`, run `41023174199`: manifest `mode: change`, every matrix job `success` (authorize, plan, threat-model, codegen-ai, codegen-commit, review, the six scanners, gate, next-step, record). `plan.json` has `changed_features` F1, F2, F3, `asvs_level` 2. Old threat ids TM-001 to TM-018 all kept on `factory/11`; 12 new threats TM-019 to TM-030 on the touched Rate limiter, Rate-limit counter store and Security event log. Pass.
+- Done-when: the pass comment on #11 has a "Threat model changes" section (12 added, none changed or removed). Pass. The record's SBOM diff comment after merge appeared on issue #3 ("No dependency changes", commit `66a93ce`), so the PR lookup works.
 
 ### 2026-10-30, chunk 23 (vulnerable-web-acceptance)
 Added `factory/acceptance.py`, `factory/acceptance_run.py`, `.github/workflows/acceptance.yml`, `tests/test_acceptance.py`, `tests/test_acceptance_run.py`, `docs/acceptance.md`, and in `factory-vuln-web` the app, Dockerfile, `openapi.yaml`, `.factory.yml`, `expected-findings.yml`, stub and README. Master session pushed (the sandbox blocked chunk-session pushes). Fixed a `review` crash on a missing base (`68c8637`) and the table separator (`23472c4`).
