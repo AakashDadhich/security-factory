@@ -805,7 +805,7 @@ jobs:
           upload: always
       - name: convert SARIF to findings
         run: |
-          python -m factory.sarif out/sast-codeql-swift/swift.sarif \
+          arch -arm64 python -m factory.sarif out/sast-codeql-swift/swift.sarif \
             --stage sast-codeql-swift --tool codeql --out out/sast-codeql-swift/findings.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

@@ -88,3 +88,9 @@ def test_app_private_key_and_claude_token_stay_out_of_the_macos_jobs():
         text = json.dumps(jobs()[name])
         assert "FACTORY_APP_PRIVATE_KEY" not in text and "CLAUDE_CODE_OAUTH_TOKEN" not in text
 
+
+
+def test_codeql_swift_conversion_forces_arm64_python():
+    steps = jobs()["sast-codeql-swift"]["steps"]
+    convert = next(s for s in steps if s.get("name") == "convert SARIF to findings")
+    assert convert["run"].lstrip().startswith("arch -arm64 python -m factory.sarif")
