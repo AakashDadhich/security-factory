@@ -181,5 +181,5 @@ jobs:
         run: |
           xcodegen --version
           swiftlint version
-          ls "$HOME/.factory/xcodegen/xcodegen/share/xcodegen/SettingPresets" | head -3
+          find "$HOME/.factory/xcodegen/xcodegen/share/xcodegen/SettingPresets" -maxdepth 1 | head -3
           xcodebuild -version
