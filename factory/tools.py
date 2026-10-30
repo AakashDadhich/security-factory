@@ -18,7 +18,8 @@ FACTORY_ROOT = Path(__file__).resolve().parent.parent
 LOCK_PATH = FACTORY_ROOT / "tools" / "versions.lock"
 BIN_DIR = Path.home() / ".factory" / "bin"
 
-KINDS = ("binary", "pipx", "npm", "container", "git", "venv")
+KINDS = ("binary", "pipx", "npm", "container", "git", "venv", "xcode")
+XCODE_APPS = Path("/Applications")
 GIT_DIR = Path.home() / ".factory"
 VENV_DIR = Path.home() / ".factory" / "venvs"
 ARCHIVES = ("tar.gz", "zip", "none")
@@ -72,6 +73,11 @@ def _validate(entry: dict) -> Tool:
                 raise ToolError(f"{name} ({key}): sha256 must be 64 lowercase hex characters")
             if spec["archive"] not in ARCHIVES:
                 raise ToolError(f"{name} ({key}): archive must be one of {', '.join(ARCHIVES)}")
+            if "install_dir" in spec:
+                if spec["archive"] == "none":
+                    raise ToolError(f"{name} ({key}): install_dir needs an archive")
+                if not NAME_RE.fullmatch(spec["install_dir"]):
+                    raise ToolError(f"{name} ({key}): install_dir must be a plain lowercase folder name")
     if kind == "container":
         image = entry.get("image", "")
         if "@sha256:" not in image:
@@ -83,6 +89,8 @@ def _validate(entry: dict) -> Tool:
             raise ToolError(f"{name}: git repo must use https")
         if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
             raise ToolError(f"{name}: git commit must be a full 40 character lowercase hex SHA")
+    if kind == "xcode" and not re.fullmatch(r"\d+(\.\d+){0,2}", entry["version"]):
+        raise ToolError(f"{name}: xcode version must look like 16.4")
     if kind == "venv":
         _check_requirements(name, entry.get("package") or name, entry["version"], entry.get("requirements", ""))
 
@@ -208,7 +216,30 @@ def add_to_github_path(directory: Path) -> None:
             f.write(entry + "\n")
 
 
-def install_binary(tool: Tool, platform_key: str, bin_dir: Path | None = None) -> Path:
+def _extract_tree(archive_path: Path, archive: str, dest: Path) -> None:
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    if archive == "tar.gz":
+        with tarfile.open(archive_path, "r:gz") as tar:
+            tar.extractall(dest, filter="data")
+    else:
+        with zipfile.ZipFile(archive_path) as zf:
+            zf.extractall(dest)
+
+
+def install_tree(tool: Tool, spec: dict[str, str], downloaded: Path, root: Path | None = None) -> Path:
+    dest = (root or GIT_DIR) / spec["install_dir"]
+    _extract_tree(downloaded, spec["archive"], dest)
+    target = dest / spec["bin"]
+    if not target.is_file():
+        raise ToolError(f"'{spec['bin']}' not found in the {tool.name} archive")
+    target.chmod(0o755)
+    add_to_github_path(target.parent)
+    return target
+
+
+def install_binary(tool: Tool, platform_key: str, bin_dir: Path | None = None, tree_root: Path | None = None) -> Path:
     bin_dir = bin_dir or BIN_DIR
     spec = select_platform(tool, platform_key)
     with tempfile.TemporaryDirectory() as tmp:
@@ -220,6 +251,8 @@ def install_binary(tool: Tool, platform_key: str, bin_dir: Path | None = None) -
                 f"checksum mismatch for {tool.name} {tool.version} ({platform_key}): "
                 f"expected {spec['sha256']}, got {actual}. Refusing to install."
             )
+        if "install_dir" in spec:
+            return install_tree(tool, spec, downloaded, tree_root)
         bin_dir.mkdir(parents=True, exist_ok=True)
         target = bin_dir / Path(spec["bin"]).name
         staged = Path(tmp) / "staged"
@@ -262,6 +295,18 @@ def install_venv(tool: Tool, root: Path | None = None, run=_run) -> Path:
     return python
 
 
+def xcode_app(tool: Tool, apps: Path | None = None) -> Path:
+    return (apps or XCODE_APPS) / f"Xcode_{tool.version}.app"
+
+
+def install_xcode(tool: Tool, apps: Path | None = None, run=_run) -> Path:
+    app = xcode_app(tool, apps)
+    if not app.is_dir():
+        raise ToolError(f"{tool.name} {tool.version} is not installed on this runner ({app} not found)")
+    run(["sudo", "xcode-select", "-s", str(app)])
+    return app
+
+
 def install(tool: Tool, platform_key: str, bin_dir: Path | None = None) -> None:
     package = tool.package or tool.name
     if tool.kind == "binary":
@@ -279,6 +324,9 @@ def install(tool: Tool, platform_key: str, bin_dir: Path | None = None) -> None:
     elif tool.kind == "venv":
         target = install_venv(tool)
         print(f"installed {tool.name} {tool.version} into the venv at {target.parent.parent}")
+    elif tool.kind == "xcode":
+        target = install_xcode(tool)
+        print(f"selected {tool.name} {tool.version} at {target}")
 
 
 def describe(tool: Tool) -> str:
@@ -290,6 +338,8 @@ def describe(tool: Tool) -> str:
         detail = f"{tool.repo}@{tool.commit}"
     elif tool.kind == "venv":
         detail = tool.requirements
+    elif tool.kind == "xcode":
+        detail = str(xcode_app(tool))
     else:
         detail = tool.package or tool.name
     return f"{tool.name}\t{tool.version}\t{tool.kind}\t{detail}"

@@ -464,3 +464,104 @@ def test_lock_rejects_unsafe_tool_names(tmp_path, name):
     lock = write_lock(tmp_path, f'[[tool]]\nname = "{name}"\nversion = "1"\nkind = "pipx"\n')
     with pytest.raises(ToolError, match="tool names must be"):
         tools.load_lock(lock)
+
+
+def tree_zip(path: Path) -> Path:
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("app/bin/app", PAYLOAD)
+        zf.writestr("app/share/app/presets/base.yml", "a: 1\n")
+    return path
+
+
+def tree_tool(url: str, sha256: str, install_dir: str = "app") -> Tool:
+    return Tool(
+        name="fake",
+        version="1.0.0",
+        kind="binary",
+        platforms={
+            "macos-arm64": {"url": url, "sha256": sha256, "archive": "zip", "bin": "app/bin/app", "install_dir": install_dir}
+        },
+    )
+
+
+def test_install_tree_keeps_the_whole_archive_and_puts_the_bin_dir_on_path(tmp_path, served, monkeypatch):
+    source = tree_zip(tmp_path / "app.zip")
+    served["https://example.com/app.zip"] = source
+    github_path = tmp_path / "github_path"
+    monkeypatch.setenv("GITHUB_PATH", str(github_path))
+    monkeypatch.setattr(tools, "GIT_DIR", tmp_path / "factory-home")
+    tool = tree_tool("https://example.com/app.zip", sha(source))
+
+    target = tools.install_binary(tool, "macos-arm64", tmp_path / "bin")
+
+    assert target == tmp_path / "factory-home" / "app" / "app" / "bin" / "app"
+    assert os.access(target, os.X_OK)
+    assert (tmp_path / "factory-home" / "app" / "app" / "share" / "app" / "presets" / "base.yml").is_file()
+    assert github_path.read_text().splitlines() == [str(target.parent)]
+    assert not (tmp_path / "bin").exists()
+
+
+def test_install_tree_checks_the_checksum_before_extracting(tmp_path, served, monkeypatch):
+    source = tree_zip(tmp_path / "app.zip")
+    served["https://example.com/app.zip"] = source
+    monkeypatch.setattr(tools, "GIT_DIR", tmp_path / "factory-home")
+    tool = tree_tool("https://example.com/app.zip", "0" * 64)
+    with pytest.raises(ToolError, match="checksum mismatch"):
+        tools.install_binary(tool, "macos-arm64", tmp_path / "bin")
+    assert not (tmp_path / "factory-home").exists()
+
+
+def test_install_tree_fails_when_the_bin_is_not_in_the_archive(tmp_path, served, monkeypatch):
+    source = make_zip(tmp_path / "app.zip", "app/other")
+    served["https://example.com/app.zip"] = source
+    monkeypatch.setattr(tools, "GIT_DIR", tmp_path / "factory-home")
+    tool = tree_tool("https://example.com/app.zip", sha(source))
+    with pytest.raises(ToolError, match="not found"):
+        tools.install_binary(tool, "macos-arm64", tmp_path / "bin")
+
+
+@pytest.mark.parametrize("extra, message", [('archive = "none"\ninstall_dir = "x"', "needs an archive"), ('archive = "zip"\ninstall_dir = "../x"', "plain lowercase")])
+def test_install_dir_is_validated(tmp_path, extra, message):
+    lock = write_lock(
+        tmp_path,
+        f"""
+[[tool]]
+name = "t"
+version = "1"
+kind = "binary"
+[tool.platforms.macos-arm64]
+url = "https://example.com/t"
+sha256 = "{'a' * 64}"
+bin = "t"
+{extra}
+""",
+    )
+    with pytest.raises(ToolError, match=message):
+        tools.load_lock(lock)
+
+
+def test_real_lock_pins_the_macos_tools():
+    lock = tools.load_lock()
+    assert lock["xcode"].kind == "xcode" and lock["xcode"].version == "16.4"
+    for name in ("xcodegen", "swiftlint"):
+        assert set(lock[name].platforms) == {"macos-arm64"}
+    assert lock["xcodegen"].platforms["macos-arm64"]["install_dir"] == "xcodegen"
+
+
+def test_install_xcode_selects_the_exact_version(tmp_path):
+    (tmp_path / "Xcode_16.4.app").mkdir()
+    calls = []
+    app = tools.install_xcode(Tool("xcode", "16.4", "xcode"), tmp_path, calls.append)
+    assert app == tmp_path / "Xcode_16.4.app"
+    assert calls == [["sudo", "xcode-select", "-s", str(app)]]
+
+
+def test_install_xcode_refuses_a_missing_version(tmp_path):
+    with pytest.raises(ToolError, match="not installed"):
+        tools.install_xcode(Tool("xcode", "99.1", "xcode"), tmp_path, lambda cmd: None)
+
+
+def test_xcode_version_must_look_like_a_version(tmp_path):
+    lock = write_lock(tmp_path, '[[tool]]\nname = "xcode"\nversion = "latest"\nkind = "xcode"\n')
+    with pytest.raises(ToolError, match="xcode version"):
+        tools.load_lock(lock)

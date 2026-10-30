@@ -108,3 +108,31 @@ image = "docker.io/library/python@sha256:aa943ce411423c7582288f18707ff66eddcbaeb
 name = "pre-commit"
 version = "4.7.0"
 kind = "pipx"
+
+[[tool]]
+name = "xcode"
+version = "16.4"
+kind = "xcode"
+
+[[tool]]
+name = "xcodegen"
+version = "2.46.0"
+kind = "binary"
+
+[tool.platforms.macos-arm64]
+url = "https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip"
+sha256 = "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806"
+archive = "zip"
+bin = "xcodegen/bin/xcodegen"
+install_dir = "xcodegen"
+
+[[tool]]
+name = "swiftlint"
+version = "0.65.1"
+kind = "binary"
+
+[tool.platforms.macos-arm64]
+url = "https://github.com/realm/SwiftLint/releases/download/0.65.1/portable_swiftlint.zip"
+sha256 = "c1e429b0599cf1b516f369a2d9ec04eaf0e436f3c12b637df8851fa52ff694d0"
+archive = "zip"
+bin = "swiftlint"
