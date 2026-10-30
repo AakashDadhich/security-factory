@@ -763,7 +763,7 @@ jobs:
           path: out/sast-swiftlint/
           if-no-files-found: error
 
-  sast-codeql-swift:
+  codeql-swift-analyze:
     needs: [setup, codegen-commit, review]
     if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && needs.setup.outputs.platform == 'macos' }}
     runs-on: macos-15
@@ -803,9 +803,35 @@ jobs:
           category: /language:swift
           output: out/sast-codeql-swift
           upload: always
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: codeql-swift-sarif
+          path: out/sast-codeql-swift/
+          if-no-files-found: error
+
+  sast-codeql-swift:
+    needs: [setup, codegen-commit, review, codeql-swift-analyze]
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.codegen-commit.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix')) && needs.setup.outputs.platform == 'macos' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AakashDadhich/security-factory
+          ref: ${{ inputs.factory-ref }}
+          path: .factory
+          persist-credentials: false
+      - uses: ./.factory/.github/actions/setup-factory
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: codeql-swift-sarif
+          path: out/sast-codeql-swift
       - name: convert SARIF to findings
         run: |
-          env -u DYLD_INSERT_LIBRARIES -u SEMMLE_PRELOAD_libtrace python -m factory.sarif out/sast-codeql-swift/swift.sarif \
+          python -m factory.sarif out/sast-codeql-swift/swift.sarif \
             --stage sast-codeql-swift --tool codeql --out out/sast-codeql-swift/findings.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -885,7 +911,7 @@ jobs:
           if-no-files-found: error
 
   gate:
-    needs: [authorize, setup, ai-eligible, plan, threat-model, codegen-ai, codegen-commit, review, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, sast-swiftlint, sast-codeql-swift, apple-build, deps-sbom, dast-web]
+    needs: [authorize, setup, ai-eligible, plan, threat-model, codegen-ai, codegen-commit, review, passthrough, hello-ai, secrets, sast-semgrep, sast-codeql, sast-eslint, sast-swiftlint, codeql-swift-analyze, sast-codeql-swift, apple-build, deps-sbom, dast-web]
     # A refused spec, change or fix run stops at authorize. In every other mode the gate always runs and fails closed.
     if: always() && (needs.authorize.result == 'success' || (inputs.mode != 'spec' && inputs.mode != 'change' && inputs.mode != 'fix'))
     runs-on: ubuntu-24.04

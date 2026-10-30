@@ -7,7 +7,8 @@ from factory import stage_matrix
 
 REPO = Path(__file__).resolve().parents[1]
 WORKFLOW = REPO / ".github" / "workflows" / "factory.yml"
-MACOS_JOBS = ("apple-build", "sast-swiftlint", "sast-codeql-swift")
+MACOS_JOBS = ("apple-build", "sast-swiftlint", "codeql-swift-analyze")
+STAGE_JOBS = ("apple-build", "sast-swiftlint", "sast-codeql-swift")
 
 
 def jobs() -> dict:
@@ -27,8 +28,8 @@ def test_macos_does_not_expect_web_only_stages():
 
 
 def test_web_does_not_expect_macos_stages():
-    assert not set(MACOS_JOBS) & set(names("web"))
-    assert not set(MACOS_JOBS) & set(names("web", "spec"))
+    assert not set(STAGE_JOBS) & set(names("web"))
+    assert not set(STAGE_JOBS) & set(names("web", "spec"))
 
 
 def test_web_only_jobs_are_not_applicable_to_macos_by_not_being_expected():
@@ -39,7 +40,7 @@ def test_macos_jobs_run_on_macos_15_with_least_privilege():
     j = jobs()
     for name in MACOS_JOBS:
         assert j[name]["runs-on"] == "macos-15"
-        assert j[name]["permissions"] == ({"contents": "read", "security-events": "write"} if name == "sast-codeql-swift" else {"contents": "read"})
+        assert j[name]["permissions"] == ({"contents": "read", "security-events": "write"} if name == "codeql-swift-analyze" else {"contents": "read"})
 
 
 def test_only_three_jobs_use_macos_runners_in_the_reusable_workflow():
@@ -47,25 +48,25 @@ def test_only_three_jobs_use_macos_runners_in_the_reusable_workflow():
 
 
 def test_macos_jobs_only_run_for_macos_projects():
-    for name in MACOS_JOBS:
+    for name in set(MACOS_JOBS) | set(STAGE_JOBS):
         assert "needs.setup.outputs.platform == 'macos'" in jobs()[name]["if"]
 
 
 def test_gate_waits_for_the_macos_jobs_and_the_manifest_lists_them():
     j = jobs()
-    assert set(MACOS_JOBS) <= set(j["gate"]["needs"])
+    assert set(MACOS_JOBS) | set(STAGE_JOBS) <= set(j["gate"]["needs"])
     step = next(s for s in j["setup"]["steps"] if s.get("name") == "write run manifest")
-    for name in MACOS_JOBS:
+    for name in STAGE_JOBS:
         assert f"--stage {name}" in step["run"]
 
 
 def test_macos_jobs_wait_for_the_pushed_commit_and_the_review():
-    for name in MACOS_JOBS:
+    for name in set(MACOS_JOBS) | set(STAGE_JOBS):
         assert {"setup", "codegen-commit", "review"} <= set(jobs()[name]["needs"])
 
 
 def test_codeql_swift_uses_a_manual_build_and_the_same_builder():
-    steps = jobs()["sast-codeql-swift"]["steps"]
+    steps = jobs()["codeql-swift-analyze"]["steps"]
     init = next(s for s in steps if "codeql-action/init" in s.get("uses", ""))
     assert init["with"]["languages"] == "swift" and init["with"]["build-mode"] == "manual"
     run_steps = [s.get("run", "") for s in steps]
@@ -90,7 +91,12 @@ def test_app_private_key_and_claude_token_stay_out_of_the_macos_jobs():
 
 
 
-def test_codeql_swift_conversion_runs_without_the_tracer_preload():
-    steps = jobs()["sast-codeql-swift"]["steps"]
-    convert = next(s for s in steps if s.get("name") == "convert SARIF to findings")
-    assert convert["run"].lstrip().startswith("env -u DYLD_INSERT_LIBRARIES -u SEMMLE_PRELOAD_libtrace python -m factory.sarif")
+def test_codeql_swift_findings_are_converted_on_linux_after_the_traced_job():
+    j = jobs()
+    stage = j["sast-codeql-swift"]
+    assert stage["runs-on"] == "ubuntu-24.04" and "codeql-swift-analyze" in stage["needs"]
+    assert stage["permissions"] == {"contents": "read"}
+    assert "factory.sarif" in json.dumps(stage)
+    assert "factory.sarif" not in json.dumps(j["codeql-swift-analyze"])
+    uploads = [s["with"]["name"] for s in j["codeql-swift-analyze"]["steps"] if "upload-artifact" in s.get("uses", "")]
+    assert uploads == ["codeql-swift-sarif"]
