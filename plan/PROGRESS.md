@@ -50,7 +50,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 19 | secure-codegen-stage | done |
 | 20 | second-agent-review | done |
 | 21 | fix-loop | done |
-| 22 | check-mode-wiring | in progress |
+| 22 | check-mode-wiring | done |
 | 23 | vulnerable-web-acceptance | todo |
 | 24 | improvement-loop | todo |
 | 25 | zap-authenticated-scan | todo |
@@ -62,7 +62,7 @@ Read this file first in every session, then read the one chunk file you were giv
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 21 are done. Next in order is chunk 22 (check-mode-wiring; chunk 20 notes say it must add check mode to the matrix for `review`). Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py` (the gate fails closed on a matrix stage with no artifact). AI stage chunks can call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`. Check `plan/00-index.md` for dependencies.
+Chunks 00 to 22 are done. Next in order is chunk 23 (vulnerable-web-acceptance); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -180,7 +180,18 @@ Chunks 00 to 21 are done. Next in order is chunk 22 (check-mode-wiring; chunk 20
 
 - Check mode (chunk 22, owner-confirmed): a usage-limit hit (adapter exit 75) in `threat-model` or `review` in check mode fails the stage, so the gate fails closed; the owner re-runs after the reset. `record` is skipped for Dependabot PRs (no App key).
 
+- Check mode (chunk 22): job `ai-eligible` (needs `setup`, no AI, outputs `run_ai`, `reason`) runs `python -m factory.eligibility` (`decide(mode, event, head_is_fork, on_default_branch, has_secret)`); reasons `fork-pr`, `work-in-progress-push` (also any other event), `no-secret`. `threat-model` and `review` are matrix stages in check mode with `Stage.ai=True`; the gate allows their skip only in check mode when `needs["ai-eligible"]` succeeded with `run_ai=false` and a known reason (else `stage-missing`). `gate-result.json` has `ai_skipped`; `report.md` has `AI stages skipped: <reason>`. `ai-eligible` is ignored by the gate like `setup`. Check-mode `threat-model` runs `--diff in/diff/diff.patch` instead of `--plan` (STRIDE only; LINDDUN and attack tree threats from `security/` are kept; no previous model means a bootstrap from the code). `record` copies `threat-model/threats.json` and `review/findings.json` to `latest/threats.json` and `latest/review.json`, and skips Dependabot PRs. Job graphs per mode are in `docs/pipeline.md` ("Check mode").
+- Scanners that ran on `factory-test-web` PR #9 still wait for `review`; a skipped `review` does not hold them back (they use `!cancelled()`).
+
 ## Session log
+
+### 2026-10-30, chunk 22 (check-mode-wiring)
+Added `factory/eligibility.py`, `ai-eligible` job, check-mode `threat-model` (diff, no plan) and `review` wiring, matrix `ai` stages, gate skip rules and summary line, record `latest/` additions, `tests/test_eligibility.py`, `tests/test_check_mode_threat_model.py`, docs. First selftest (`40963890053`) failed one test on list order (my test bug), fixed in `afcd28d`. Master session pushed.
+- Done-when: selftest run `40964162768` on `1259fd3`: all 8 jobs `success`. Pass.
+- Done-when: push of branch `check22-wip` on `factory-test-web`, run `40964426903`: scanners, gate and record `success`; `threat-model`, `review`, `plan`, `codegen-*` skipped; gate summary `AI stages skipped: work-in-progress-push` with both AI rows skipped for that reason. Pass.
+- Done-when: PR #9 from that branch, run `40964912247`. First attempt failed `threat-model` and `review` with exit 75 (Claude usage limit), so the gate failed closed as designed (owner-confirmed). After the reset the rerun had `threat-model` (1m15s, STRIDE ran, LINDDUN and attack trees skipped, 9 threats, existing `security/` absent so bootstrapped) and `review` (21 s) `success`, gate `success`, summary rows `ok`. Pass. PR closed unmerged; the remote branch `check22-wip` is left for the master to delete.
+- Done-when: Dependabot PR: PENDING. `factory-test-web` has no open Dependabot PR (#1 and #2 are closed and predate the wiring). Verify when the next one arrives: `ai-eligible` should give `run_ai=true`, `record` should be skipped, and check whether `sast-codeql` can upload SARIF with Dependabot's read-only token.
+- Done-when: `grep -n pull_request_target` over `.github/workflows` and `templates` finds nothing (also asserted by `test_no_workflow_or_template_uses_pull_request_target`). Pass.
 
 ### 2026-10-29, chunk 21 (fix-loop)
 Added `factory/fixloop.py`, `prompts/fix.md`, `schemas/fix-reply.schema.json`, codegen fix mode, authorize validation, manifest `--iteration`, the `fix-input` and `next-step` jobs, concurrency, stub trigger (template and `factory-test-web`), docs, `tests/test_fixloop.py` and fix tests in `test_codegen.py`. Pushed with owner pre-approval. A first live run found that `codegen-commit` was skipped because of a skipped ancestor; fixed in `7841bcd`.
