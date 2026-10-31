@@ -263,11 +263,11 @@ All chunks (00 to 31, plus 30.5) are done. Remaining owner choices are the defer
 
 ### 2026-10-31, chunk 31 (portfolio-docs)
 Wrote `docs/portfolio/{case-study,diagrams,stages,factory-security,samm,limits}.md` and rewrote `README.md` (badges, portfolio links, reference links). Seven small docs commits (`fb0179e` to `8168a64`). No factory code changed.
-- Done-when: Mermaid. All 6 blocks in `diagrams.md` parse with `mermaid.parse` (11.4.1, built-in browser): `ok` x6. Rendering on github.com is PENDING until the commits are pushed (the push was refused by the auto-mode classifier in this session).
+- Done-when: Mermaid. All 6 blocks in `diagrams.md` parse with `mermaid.parse` (11.4.1, built-in browser): `ok` x6. On github.com the page shows 6 Mermaid frames and no render error text (checked in the built-in browser; the frames are cross-origin, so the diagram contents were not inspected). Pass.
 - Done-when: `grep -rn $'\xe2\x80\x94' docs/portfolio README.md` printed nothing (exit 1); the en dash check is also empty. Pass.
 - Done-when: `case-study.md` is 1427 words and holds the real tables from Notes (web run `41019054583`: 3 critical, 18 high; iOS run `41185475599`: 0 critical, 14 high, 4 medium, 1 low, 15 info), with run links; relative links in all six files resolve to existing files. Pass.
 - Done-when: every limit in task 6 appears in `limits.md` (iOS dynamic analysis and Corellium, MobSF on macOS, Semgrep Swift, AI non-determinism, Pro limits, no organisation and per-repo credentials with the setup loop, D18, and Nuclei, TruffleHog, SOPS, Dagger, MCP, Ollama). Pass.
-- Open: after the push, confirm selftest is green on the new head and that the diagrams render on github.com.
+- Selftest run `41196901513` on `85b8a38` is green (reported by the master session). Pass.
 
 ### 2026-10-31, chunk 30.5 (acceptance-follows-candidate)
 Owner-requested fix: acceptance had been testing released `v1` instead of the candidate. Changed `factory/manifest.py` and the run-manifest schema (`factory_commit`), `factory/acceptance_run.py` (`--factory-ref`), `factory/acceptance.py` (setup artifact, `--expect-factory-commit`), `factory/release.py` (acceptance proof), `acceptance.yml`, `factory.yml` (setup step), docs (`release.md`, `acceptance.md`, `contracts.md`), tests in `test_release.py`, `test_acceptance.py`, `test_acceptance_run.py`, `test_manifest.py`, and the two vulnerable stubs.
