@@ -1,0 +1,45 @@
+{
+  "app_name": "FactoryTestIOS",
+  "appsec": {
+    "app_name": "FactoryTestIOS",
+    "file_name": "app.ipa",
+    "hash": "fdf2191b8de68118965ef489e0167f5d",
+    "high": [],
+    "hotspot": [],
+    "info": [],
+    "secure": [
+      {
+        "description": "This application does not include any user or device trackers. Unable to find trackers during static analysis.",
+        "section": "trackers",
+        "title": "This application has no privacy trackers"
+      }
+    ],
+    "security_score": 64,
+    "total_trackers": 432,
+    "trackers": 0,
+    "version_name": "1.0",
+    "warning": [
+      {
+        "description": "The binary may contain the following insecure API(s) _fopen\n, _memcpy\n, _sscanf\n, _strlen\n",
+        "section": "binary",
+        "title": "Binary makes use of insecure API(s)"
+      },
+      {
+        "description": "The binary may use _malloc\n function instead of calloc",
+        "section": "binary",
+        "title": "Binary makes use of malloc function"
+      },
+      {
+        "description": "The binary has Runpath Search Path (@rpath) set. In certain cases an attacker can abuse this feature to run arbitrary executable for code execution and privilege escalation. Remove the compiler option -rpath to remove @rpath.",
+        "section": "macho",
+        "title": "Application binary has rpath set"
+      },
+      {
+        "description": "Debug Symbols are available. To strip debugging symbols, set Strip Debug Symbols During Copy to YES, Deployment Postprocessing to YES, and Strip Linked Product to YES in project's build settings.",
+        "section": "macho",
+        "title": "Application binary does not have symbols stripped"
+      }
+    ]
+  },
+  "file_name": "app.ipa"
+}

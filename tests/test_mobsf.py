@@ -255,3 +255,16 @@ def test_the_lock_pins_mobsf_by_digest():
 def test_cli_returns_one_on_stage_error(tmp_path, capsys):
     assert stage.main(["--ipa", str(tmp_path / "nope.ipa"), "--out", str(tmp_path / "o")]) == 1
     assert "error:" in capsys.readouterr().err
+
+
+def test_real_mobsf_4_6_2_report_on_the_clean_test_app_gives_four_medium_findings():
+    real = json.loads((FIXTURE.parent / "report-real.json").read_text())
+    result = stage.convert(real, "app.ipa")
+    assert sorted(f["rule_id"] for f in result) == [
+        "mobsf-application-binary-does-not-have-symbols-stripped",
+        "mobsf-application-binary-has-rpath-set",
+        "mobsf-binary-makes-use-of-insecure-api-s",
+        "mobsf-binary-makes-use-of-malloc-function",
+    ]
+    assert {f["severity"] for f in result} == {"medium"}
+    assert all("\n" not in f["description"] for f in result)
