@@ -151,3 +151,32 @@ def test_cli_reports_failure_on_stderr(monkeypatch, capsys):
     monkeypatch.setattr(release, "check", lambda *a, **k: (_ for _ in ()).throw(release.ReleaseError("no successful acceptance run")))
     assert release.main(["check", "--repo", "o/r", "--sha", SHA]) == 1
     assert "no successful acceptance run" in capsys.readouterr().err
+
+
+def _workflow():
+    from pathlib import Path
+
+    import yaml
+
+    return yaml.safe_load((Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml").read_text())
+
+
+def test_release_workflow_is_manual_with_a_required_confirm_input():
+    wf = _workflow()
+    assert list(wf[True]) == ["workflow_dispatch"]
+    assert wf[True]["workflow_dispatch"]["inputs"]["confirm"]["required"] is True
+
+
+def test_release_workflow_has_write_access_only_in_its_one_job():
+    wf = _workflow()
+    assert wf["permissions"] == {}
+    assert list(wf["jobs"]) == ["release"]
+    assert wf["jobs"]["release"]["permissions"] == {"contents": "write", "actions": "read"}
+
+
+def test_release_workflow_only_runs_on_main_and_passes_inputs_through_env():
+    job = _workflow()["jobs"]["release"]
+    assert job["if"] == "github.ref == 'refs/heads/main'"
+    for step in job["steps"]:
+        assert "${{" not in step.get("run", "")
+    assert job["steps"][0]["with"]["persist-credentials"] is False

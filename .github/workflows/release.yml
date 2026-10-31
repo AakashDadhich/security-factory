@@ -1,0 +1,41 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type v1 to move the v1 tag to the selected commit
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  PYTHONSAFEPATH: '1'
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: check selftest and acceptance, then move the tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONFIRM: ${{ inputs.confirm }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          PYTHONPATH: .
+        shell: bash
+        run: |
+          python3 -m factory.release release --repo "$REPO" --sha "$SHA" --confirm "$CONFIRM" | tee -a "$GITHUB_STEP_SUMMARY"
