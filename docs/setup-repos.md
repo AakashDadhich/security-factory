@@ -16,6 +16,7 @@ Run it yourself, in your own terminal. Secret values are typed or read from a fi
 | Setting | default workflow permissions | `read`, and Actions may not approve PRs |
 | Setting | fork PR workflow approval | required for all external contributors |
 | Setting | secret scanning, push protection | enabled |
+| Setting | allowed actions | `selected`: GitHub-owned actions plus the patterns in `ALLOWED` (see "The Actions allow list") |
 
 ## Before you start
 
@@ -34,6 +35,7 @@ Paste the whole block into zsh or bash. It runs in a subshell, so the token vari
   printf 'Path to temporary App .pem: '; read -r PEM
   printf 'App ID: '; read -r APP_ID
   [ -n "$CLAUDE_TOKEN" ] && [ -r "$PEM" ] && [ -n "$APP_ID" ] || { echo "Missing token, readable .pem or App ID. Nothing changed."; exit 1; }
+  ALLOWED='{"github_owned_allowed":true,"verified_allowed":false,"patterns_allowed":["AakashDadhich/security-factory/.github/workflows/*"]}'
   for r in $(gh repo list AakashDadhich --topic security-factory --limit 200 --json nameWithOwner --jq '.[].nameWithOwner'); do
     echo "== $r"
     printf %s "$CLAUDE_TOKEN" | gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo "$r"
@@ -48,6 +50,8 @@ Paste the whole block into zsh or bash. It runs in a subshell, so the token vari
       -f default_workflow_permissions=read -F can_approve_pull_request_reviews=false
     gh api -X PUT "repos/$r/actions/permissions/fork-pr-contributor-approval" \
       -f approval_policy=all_external_contributors
+    gh api -X PUT "repos/$r/actions/permissions" -F enabled=true -f allowed_actions=selected
+    printf '%s' "$ALLOWED" | gh api -X PUT "repos/$r/actions/permissions/selected-actions" --input -
     printf '%s' '{"security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"enabled"}}}' \
       | gh api -X PATCH "repos/$r" --input - --silent
   done
@@ -60,7 +64,29 @@ Endpoints used, checked against the GitHub REST docs on 2026-10-27:
 
 - `PUT /repos/{owner}/{repo}/actions/permissions/workflow` with `default_workflow_permissions` (`read`/`write`) and `can_approve_pull_request_reviews` (boolean).
 - `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` with `approval_policy` (`first_time_contributors_new_to_github`, `first_time_contributors` or `all_external_contributors`).
+- `PUT /repos/{owner}/{repo}/actions/permissions` with `enabled` (boolean) and `allowed_actions` (`all`, `local_only` or `selected`).
+- `PUT /repos/{owner}/{repo}/actions/permissions/selected-actions` with `github_owned_allowed`, `verified_allowed` (booleans) and `patterns_allowed` (list of `owner/repo@ref` patterns, `*` wildcards allowed).
 - `PATCH /repos/{owner}/{repo}` with `security_and_analysis.secret_scanning.status` and `security_and_analysis.secret_scanning_push_protection.status` (`enabled`/`disabled`).
+
+## The Actions allow list
+
+Personal accounts have no account-wide Actions policy (D21), so each tagged repo gets its own: `allowed_actions: selected`, GitHub-owned actions allowed (`actions/*` and `github/*`, which covers `github/codeql-action`), Marketplace "verified creator" actions not allowed, and these extra patterns:
+
+| Pattern | Why |
+|---|---|
+| `AakashDadhich/security-factory/.github/workflows/*` | The project stubs call the factory's reusable workflow. Under an allow list a reusable workflow from another repo must be allowed explicitly, or every project run is blocked. |
+
+Local actions (`./.github/actions/...`) need no entry. A third-party action must be added by commit SHA, for example `owner/action@<40 hex>`; the factory currently uses none.
+
+Rebuild the list of actions in use before changing `ALLOWED` in the loop:
+
+```bash
+for d in secure-software-factory factory-test-web factory-vuln-web factory-test-macos factory-test-ios factory-vuln-ios; do
+  grep -rhoE 'uses: [^ ]+' "$d/.github"
+done | sort -u | grep -vE 'uses: (\./|actions/|github/)'
+```
+
+Anything this prints other than the factory's own reusable workflow (and the `$/...` text in a comment) is a third-party action: show it to the owner and add its pattern to `ALLOWED` before running the loop. If a run fails with "action is not allowed", the pattern is missing.
 
 ## Check one repo
 
@@ -70,6 +96,8 @@ gh secret list --repo "$r"
 gh secret list --repo "$r" --app dependabot
 gh variable list --repo "$r"
 gh api "repos/$r/actions/permissions/workflow" --jq .default_workflow_permissions
+gh api "repos/$r/actions/permissions" --jq .allowed_actions
+gh api "repos/$r/actions/permissions/selected-actions"
 gh api "repos/$r" --jq '.security_and_analysis.secret_scanning.status, .security_and_analysis.secret_scanning_push_protection.status'
 ```
 
