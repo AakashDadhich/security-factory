@@ -57,12 +57,12 @@ Read this file first in every session, then read the one chunk file you were giv
 | 26 | macos-build-and-sast | done |
 | 27 | apple-scripted-checks | done |
 | 28 | ios-build-and-mobsf | done |
-| 29 | apple-vuln-acceptance | todo |
+| 29 | apple-vuln-acceptance | done |
 | 30 | template-and-release | todo |
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 28 are done. Next in order is chunk 29 (apple-vuln-acceptance); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
+Chunks 00 to 29 are done. Next in order is chunk 30 (template-and-release); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -231,7 +231,30 @@ Chunks 00 to 28 are done. Next in order is chunk 29 (apple-vuln-acceptance); che
 - Clean iOS app result: MobSF gives 4 medium findings (insecure API use, malloc, rpath set, symbols not stripped), gate still passes, so no suppressions were needed. The `mobsf` step takes about 30 s after the image pull; the whole run about 12 minutes.
 - Direct `git commit && git push` chains and compound shell commands were sometimes refused by the auto-mode classifier in this session; separate simple calls worked.
 
+- Apple vulnerable acceptance (chunk 29): repo `AakashDadhich/factory-vuln-ios` (public, App installed). SwiftUI iOS 17 app `FactoryVulnIOS`; flaws in `project.yml` (ATS via `info.properties`, generated `Config/Info.plist` is gitignored), `Config/App.entitlements` (`get-task-allow`), `Sources/Session.swift` (UserDefaults `authToken`, `kSecAttrAccessibleAlways`), `Sources/Credentials.swift` (`Insecure.MD5`), no privacy manifest, ZIPFoundation 0.9.16 (CVE-2023-39138, GHSA-c2cc-3569-6jh2, fixed 0.9.18) in `project.yml` and a root `Package.resolved` (tag object `3c52849f`, commit `43ec5680...`). `acceptance.yml` is now a matrix job `acceptance` over `factory-vuln-web` and `factory-vuln-ios` (`fail-fast: false`, artifacts `acceptance-<repo>`); `TARGET_NAME` comes from the matrix. Spec in `docs/acceptance.md`.
+- Factory fixes found in chunk 29: (1) `apple_checks` only knew the macOS key `com.apple.security.get-task-allow`; iOS uses bare `get-task-allow`, now both flag `get-task-allow-release`. (2) The acceptance check step ran `python ... | tee` under GitHub's default shell, which has no `pipefail`, so a matcher error (exit 1) was hidden and the job went green with no artifact; the step now has `shell: bash`. Earlier web acceptance runs (chunks 23 and 25) were green by real matches, but a matcher crash would have been masked.
+- A missing privacy manifest returns only `privacy-manifest-missing`; the per-API `privacy-required-reason-*` findings need a manifest, so they can't be an expectation there. When the gate merges findings at the same line (Semgrep MD5 plus CodeQL `swift/weak-password-hashing`) the representative keeps CodeQL's rule id, so match by `cwe` (CWE-328) with the stage. OSV findings have no CWE, so match the package by its CVE rule id.
+- iOS acceptance result table (run `41185475599`, target gate `fail`: 0 critical, 14 high, 4 medium, 1 low, 15 info):
+
+| Expectation | Expected stage | Result | Caught by | Finding |
+|---|---|---|---|---|
+| ats | apple-checks | matched | apple-checks | ats-allows-arbitrary-loads (high) |
+| privacy-manifest | apple-checks | matched | apple-checks | privacy-manifest-missing (high) |
+| get-task-allow | apple-checks | matched | apple-checks | get-task-allow-release (high) |
+| keychain-always | apple-checks, sast-semgrep | matched | apple-checks | keychain-accessible-always (high) |
+| userdefaults-token | sast-semgrep | matched | sast-semgrep | userdefaults-sensitive-value (high) |
+| md5 | sast-semgrep | matched | sast-semgrep (merged with CodeQL) | swift/weak-password-hashing (high) |
+| vulnerable-package | deps-sbom | matched | deps-sbom | CVE-2023-39138 (high) |
+| mobsf-ats (optional) | mobsf | matched | mobsf | mobsf-app-transport-security-allowsarbitraryloads-is-allowed (high) |
+
 ## Session log
+
+### 2026-10-31, chunk 29 (apple-vuln-acceptance)
+Built and pushed `factory-vuln-ios`, wrote its `expected-findings.yml`, turned `acceptance.yml` into a web and iOS matrix, fixed the iOS `get-task-allow` key and the masked matcher failure, updated `docs/acceptance.md` and tests (`test_acceptance_run.py`, `test_apple_checks.py`). The first two matrix runs exposed my own expectation mistakes (missing `min_severity`, CWE and rule id choices); only the expectations changed.
+- Done-when: selftest run `41184123058` on `dbc0d56` (the final factory code), all 8 jobs `success`. Pass.
+- Done-when: `gh workflow run acceptance.yml`, run `41185475599`, both entries `success`. Pass.
+- Done-when: iOS table in Notes: every non-optional expectation matched, optional MobSF row matched, `factory-vuln-ios` gate `fail`. Pass.
+- Done-when: result table recorded in Notes. Pass.
 
 ### 2026-10-31, chunk 28 (ios-build-and-mobsf)
 Added iOS support to `apple_build` (unsigned `-sdk iphoneos` build, `package_ipa`), `apple_checks` (entitlements from the project spec), the `mobsf` lock entry, `factory/stages/mobsf.py`, job `mobsf`, the matrix and workflow changes, Makefile target, docs, and tests (`test_mobsf.py`, `test_ios_stages.py`, additions to `test_apple_build.py` and `test_apple_checks.py`). Built and populated `factory-test-ios` and pushed it. The first live run was green, so the Apple jobs needed no fixes.
