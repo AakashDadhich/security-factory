@@ -17,6 +17,7 @@ SOURCE_SUFFIXES = {".swift", ".m", ".mm", ".h", ".c", ".cc", ".cpp"}
 SKIP_DIRS = {".git", ".factory", ".build", "build", "Pods", "Carthage", "DerivedData", "node_modules", "out", "SourcePackages"}
 SANDBOX = "com.apple.security.app-sandbox"
 TASK_ALLOW = "com.apple.security.get-task-allow"
+IOS_TASK_ALLOW = "get-task-allow"
 RISKY = (
     "com.apple.security.cs.disable-library-validation",
     "com.apple.security.cs.allow-unsigned-executable-memory",
@@ -89,9 +90,9 @@ def check_signature(platform: str, flags: dict, entitlements: dict, path: str) -
             out.append(make("macos-app-sandbox-disabled", "App Sandbox is not enabled", "high", path,
                             f"The entitlement {SANDBOX} is missing or false, so the app runs with the full privileges of the user.",
                             f"Add {SANDBOX} = true to the app's entitlements and grant only the capabilities it needs.", ["CWE-250"]))
-    if entitlements.get(TASK_ALLOW) is True:
+    if entitlements.get(TASK_ALLOW) is True or entitlements.get(IOS_TASK_ALLOW) is True:
         out.append(make("get-task-allow-release", "get-task-allow is true in a Release build", "high", path,
-                        "com.apple.security.get-task-allow lets other processes attach a debugger to the app.",
+                        "get-task-allow lets other processes attach a debugger to the app.",
                         "Remove get-task-allow from the Release entitlements and sign Release builds without debugging entitlements.", ["CWE-489"]))
     for key in RISKY:
         if entitlements.get(key) is True:

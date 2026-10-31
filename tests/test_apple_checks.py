@@ -315,6 +315,13 @@ def test_ios_entitlements_file_may_be_declared_with_the_entitlements_key(tmp_pat
     assert "get-task-allow-release" in rules(run_ios(tmp_path, src / "project.yml"))
 
 
+def test_ios_style_get_task_allow_key_is_flagged(tmp_path):
+    src = ios_project(tmp_path, "entitlements-task-allow.xml")
+    (src / "App.entitlements").write_text('<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>get-task-allow</key><true/></dict></plist>')
+    result = rules(run_ios(tmp_path, src / "project.yml"))
+    assert "get-task-allow-release" in result
+
+
 def test_spec_entitlement_paths_skip_non_application_targets(tmp_path):
     spec = tmp_path / "project.yml"
     spec.write_text("name: X\ntargets:\n  Lib:\n    type: framework\n    settings:\n      base:\n        CODE_SIGN_ENTITLEMENTS: lib.entitlements\n  App:\n    type: application\n    settings:\n      base:\n        CODE_SIGN_ENTITLEMENTS: sub/app.entitlements\n")
