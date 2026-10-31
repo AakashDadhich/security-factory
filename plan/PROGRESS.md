@@ -60,10 +60,10 @@ Read this file first in every session, then read the one chunk file you were giv
 | 29 | apple-vuln-acceptance | done |
 | 30 | template-and-release | done |
 | 30.5 | acceptance-follows-candidate (owner-requested fix, no chunk file) | done |
-| 31 | portfolio-docs | todo |
+| 31 | portfolio-docs | done |
 
 ## Next up
-Chunks 00 to 30 are done. Next in order is chunk 31 (portfolio-docs); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
+All chunks (00 to 31, plus 30.5) are done. Remaining owner choices are the deferred items in decisions.md (SOPS, Dagger, Model Context Protocol, Ollama, Nuclei, TruffleHog) and the SAMM improvements in `docs/portfolio/samm.md`.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -257,7 +257,17 @@ Chunks 00 to 30 are done. Next in order is chunk 31 (portfolio-docs); check `pla
 - Actions-policy gotcha: `gh ... --jq -c` is parsed as the jq expression (`-c` is not a gh flag); use `--jq '<expr>'` alone.
 - Automated security review comments on the template stub (`secrets: inherit` to a tag-pinned same-owner workflow, `repository_dispatch` payload, label trigger) repeat accepted tradeoffs from chunks 06, 09 and 21: `authorize` validates the fix payload and the sender and issue author allowlist, fork PRs get no secrets. Not changed.
 
+- Portfolio docs (chunk 31): `docs/portfolio/{case-study,diagrams,stages,factory-security,samm,limits}.md` and a README with selftest and acceptance badges. Mermaid is only in `diagrams.md` (6 blocks; they parse with mermaid 11.4.1, checked in the built-in browser). SAMM self-score is 31 of 45 (Governance 5, Design 8, Implementation 7, Verification 7, Operations 4). The case study cites acceptance runs `41019054583` (web), `41185475599` (iOS), `41047582825` (authenticated XSS) and the latest passing run `41195172634` (commit `f6064f8`, no per-row table was downloaded from it). Facts in the docs that must be updated when the factory changes: tool count (18 in `tools/versions.lock`), selftest figure `1233 passed, 8 skipped` (run `41188167458`), the allow list, and the stage list.
+
 ## Session log
+
+### 2026-10-31, chunk 31 (portfolio-docs)
+Wrote `docs/portfolio/{case-study,diagrams,stages,factory-security,samm,limits}.md` and rewrote `README.md` (badges, portfolio links, reference links). Seven small docs commits (`fb0179e` to `8168a64`). No factory code changed.
+- Done-when: Mermaid. All 6 blocks in `diagrams.md` parse with `mermaid.parse` (11.4.1, built-in browser): `ok` x6. Rendering on github.com is PENDING until the commits are pushed (the push was refused by the auto-mode classifier in this session).
+- Done-when: `grep -rn $'\xe2\x80\x94' docs/portfolio README.md` printed nothing (exit 1); the en dash check is also empty. Pass.
+- Done-when: `case-study.md` is 1427 words and holds the real tables from Notes (web run `41019054583`: 3 critical, 18 high; iOS run `41185475599`: 0 critical, 14 high, 4 medium, 1 low, 15 info), with run links; relative links in all six files resolve to existing files. Pass.
+- Done-when: every limit in task 6 appears in `limits.md` (iOS dynamic analysis and Corellium, MobSF on macOS, Semgrep Swift, AI non-determinism, Pro limits, no organisation and per-repo credentials with the setup loop, D18, and Nuclei, TruffleHog, SOPS, Dagger, MCP, Ollama). Pass.
+- Open: after the push, confirm selftest is green on the new head and that the diagrams render on github.com.
 
 ### 2026-10-31, chunk 30.5 (acceptance-follows-candidate)
 Owner-requested fix: acceptance had been testing released `v1` instead of the candidate. Changed `factory/manifest.py` and the run-manifest schema (`factory_commit`), `factory/acceptance_run.py` (`--factory-ref`), `factory/acceptance.py` (setup artifact, `--expect-factory-commit`), `factory/release.py` (acceptance proof), `acceptance.yml`, `factory.yml` (setup step), docs (`release.md`, `acceptance.md`, `contracts.md`), tests in `test_release.py`, `test_acceptance.py`, `test_acceptance_run.py`, `test_manifest.py`, and the two vulnerable stubs.
