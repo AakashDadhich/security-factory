@@ -86,8 +86,21 @@ def test_acceptance_workflow_is_locked_down():
     assert wf["permissions"] == {}
     triggers = wf[True] if True in wf else wf["on"]
     assert set(triggers) == {"workflow_dispatch", "schedule"}
-    job = wf["jobs"]["vulnerable-web"]
+    job = wf["jobs"]["acceptance"]
     assert job["permissions"] == {"contents": "read"}
     text = path.read_text()
     assert "github.event" not in text
     assert "permission-actions: write" in text
+
+
+def test_acceptance_workflow_matrix_covers_web_and_ios_and_does_not_stop_early():
+    import pathlib
+
+    import yaml
+
+    path = pathlib.Path(__file__).resolve().parent.parent / ".github" / "workflows" / "acceptance.yml"
+    job = yaml.safe_load(path.read_text())["jobs"]["acceptance"]
+    assert job["strategy"]["matrix"]["target"] == ["factory-vuln-web", "factory-vuln-ios"]
+    assert job["strategy"]["fail-fast"] is False
+    assert job["env"]["TARGET_NAME"] == "${{ matrix.target }}"
+    assert "TARGET_NAME" not in yaml.safe_load(path.read_text())["env"]

@@ -14,12 +14,18 @@ concurrency:
 env:
   PYTHONSAFEPATH: '1'
   TARGET_OWNER: AakashDadhich
-  TARGET_NAME: factory-vuln-web
 
 jobs:
-  vulnerable-web:
+  acceptance:
+    name: acceptance (${{ matrix.target }})
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [factory-vuln-web, factory-vuln-ios]
+    env:
+      TARGET_NAME: ${{ matrix.target }}
     permissions:
       contents: read
     steps:
@@ -53,6 +59,6 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: acceptance
+          name: acceptance-${{ matrix.target }}
           path: out/acceptance/
           if-no-files-found: ignore
