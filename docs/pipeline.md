@@ -1,6 +1,6 @@
 # Pipeline
 
-A push to a project repo wakes its stub (`.github/workflows/factory.yml`, copied from `templates/project/`). The stub calls the reusable workflow `AakashDadhich/security-factory/.github/workflows/factory.yml@main` (D17: `@v1` once chunk 30 creates it) with `secrets: inherit` and grants it `contents: read`. A reusable workflow can't hold more permissions than its caller grants, so later chunks widen the stub when they need more.
+A push to a project repo wakes its stub (`.github/workflows/factory.yml`, copied from `templates/project/`). The stub calls the reusable workflow `AakashDadhich/security-factory/.github/workflows/factory.yml@v1` (D17: the owner moves `v1` only after selftest and acceptance pass, see `docs/release.md`) with `secrets: inherit` and grants it `contents: read`. A reusable workflow can't hold more permissions than its caller grants, so later chunks widen the stub when they need more.
 
 Every job checks out the factory at `inputs.factory-ref` into `.factory/` and runs `./.factory/.github/actions/setup-factory`. Results travel between jobs only as artifacts, one per stage, named after the stage.
 
@@ -162,7 +162,7 @@ When it is set, `harness up` checks that `.env.example` defines both variables a
 | Input | Default | Meaning |
 |---|---|---|
 | `mode` | `check` | `spec`, `check`, `fix` or `change` |
-| `factory-ref` | `main` | Factory ref every job checks out into `.factory/` |
+| `factory-ref` | `main` (stubs pass `v1`) | Factory ref every job checks out into `.factory/` |
 | `config-path` | `.factory.yml` | Project config file |
 | `issue` | `0` | Issue number in spec, change and fix modes, `0` otherwise |
 | `iteration` | `0` | Fix loop round, 1 or 2 in fix mode, `0` otherwise |
