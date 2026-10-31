@@ -112,7 +112,7 @@ jobs:
           ITERATION: ${{ inputs.iteration }}
         run: >-
           python -m factory.manifest create
-          --config "$CONFIG_PATH" --mode "$MODE" --factory-ref "$FACTORY_REF" --issue "$ISSUE" --iteration "$ITERATION"
+          --config "$CONFIG_PATH" --mode "$MODE" --factory-ref "$FACTORY_REF" --factory-commit "$(git -C .factory rev-parse HEAD)" --issue "$ISSUE" --iteration "$ITERATION"
           --stage plan --stage threat-model --stage codegen-ai --stage codegen-commit --stage review --stage passthrough --stage hello-ai --stage secrets --stage sast-semgrep --stage sast-codeql --stage sast-eslint --stage sast-swiftlint --stage sast-codeql-swift --stage apple-build --stage apple-checks --stage mobsf --stage deps-sbom --stage dast-web --stage gate
           --out out/setup/run-manifest.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

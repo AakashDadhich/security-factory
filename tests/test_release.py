@@ -1,10 +1,12 @@
 import datetime
 import json
+from pathlib import Path
 
 import pytest
 
 from factory import release
 
+REAL_DOWNLOAD = release._download
 NOW = datetime.datetime(2026, 10, 31, 12, 0, 0, tzinfo=datetime.timezone.utc)
 SHA = "a" * 40
 OTHER = "b" * 40
@@ -41,6 +43,28 @@ class FakeGh:
                 self.refs[args[3].rsplit("/", 1)[1]] = next(f for f in fields if f.startswith("sha=")).split("=", 1)[1]
             return "{}"
         raise AssertionError(args)
+
+
+def acceptance_result(sha=SHA, ok=True, ref=None):
+    return {"ok": ok, "factory": {"ref": ref or sha, "commit": sha, "target_commit": "c" * 40}}
+
+
+class FakeDownload:
+    def __init__(self, results=None):
+        self.results = results or {}
+        self.calls = []
+
+    def __call__(self, repo, run_id, name, dest):
+        self.calls.append((run_id, name))
+        result = self.results.get((run_id, name), self.results.get(run_id, acceptance_result()))
+        if result is None:
+            raise release.ReleaseError(f"could not download artifact {name}")
+        (Path(dest) / "acceptance.json").write_text(json.dumps(result))
+
+
+@pytest.fixture(autouse=True)
+def default_download(monkeypatch):
+    monkeypatch.setattr(release, "_download", FakeDownload())
 
 
 def green():
@@ -180,3 +204,68 @@ def test_release_workflow_only_runs_on_main_and_passes_inputs_through_env():
     for step in job["steps"]:
         assert "${{" not in step.get("run", "")
     assert job["steps"][0]["with"]["persist-credentials"] is False
+
+
+def test_check_names_the_factory_commit_the_acceptance_run_tested():
+    lines = release.check("o/r", SHA, NOW, gh=FakeGh(green()))
+    assert f"tested factory commit {SHA}" in lines[1]
+
+
+def test_acceptance_that_tested_a_different_ref_is_rejected(monkeypatch):
+    monkeypatch.setattr(release, "_download", FakeDownload({2: acceptance_result(sha=OTHER, ref="v1")}))
+    with pytest.raises(release.ReleaseError) as e:
+        release.check("o/r", SHA, NOW, gh=FakeGh(green()))
+    msg = str(e.value)
+    assert "no acceptance run tested " + SHA in msg
+    assert f"tested factory commit {OTHER} (ref v1)" in msg and "factory-vuln-web" in msg
+
+
+def test_acceptance_for_only_one_target_is_rejected(monkeypatch):
+    results = {(2, "acceptance-factory-vuln-web"): acceptance_result(), (2, "acceptance-factory-vuln-ios"): acceptance_result(sha=OTHER)}
+    monkeypatch.setattr(release, "_download", FakeDownload(results))
+    with pytest.raises(release.ReleaseError, match="factory-vuln-ios"):
+        release.check("o/r", SHA, NOW, gh=FakeGh(green()))
+
+
+def test_acceptance_result_without_factory_commit_is_rejected(monkeypatch):
+    monkeypatch.setattr(release, "_download", FakeDownload({2: {"ok": True}}))
+    with pytest.raises(release.ReleaseError, match="factory commit unknown"):
+        release.check("o/r", SHA, NOW, gh=FakeGh(green()))
+
+
+def test_acceptance_result_that_did_not_pass_is_rejected(monkeypatch):
+    monkeypatch.setattr(release, "_download", FakeDownload({2: acceptance_result(ok=False)}))
+    with pytest.raises(release.ReleaseError, match="did not pass"):
+        release.check("o/r", SHA, NOW, gh=FakeGh(green()))
+
+
+def test_missing_acceptance_artifact_is_rejected(monkeypatch):
+    monkeypatch.setattr(release, "_download", FakeDownload({2: None}))
+    with pytest.raises(release.ReleaseError, match="no usable result"):
+        release.check("o/r", SHA, NOW, gh=FakeGh(green()))
+
+
+def test_an_older_qualifying_acceptance_run_is_used_when_the_newest_tested_another_ref(monkeypatch):
+    newer = run(3, updated="2026-10-31T01:00:00Z")
+    gh = FakeGh({"selftest.yml": [run(1)], "acceptance.yml": [newer, run(2)]})
+    monkeypatch.setattr(release, "_download", FakeDownload({3: acceptance_result(sha=OTHER)}))
+    lines = release.check("o/r", SHA, NOW, gh=gh)
+    assert "run 2" in lines[1]
+
+
+def test_release_with_a_mismatched_acceptance_creates_no_tags(monkeypatch):
+    monkeypatch.setattr(release, "_download", FakeDownload({2: acceptance_result(sha=OTHER)}))
+    gh = FakeGh(green())
+    with pytest.raises(release.ReleaseError):
+        release.release("o/r", SHA, "v1", NOW, gh=gh)
+    assert gh.refs == {}
+
+
+def test_download_wrapper_reports_gh_failures(monkeypatch):
+    class P:
+        returncode = 1
+        stderr = "boom"
+
+    monkeypatch.setattr(release.subprocess, "run", lambda *a, **k: P())
+    with pytest.raises(release.ReleaseError, match="boom"):
+        REAL_DOWNLOAD("o/r", 1, "x", "d")

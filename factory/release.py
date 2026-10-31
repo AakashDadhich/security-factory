@@ -3,10 +3,13 @@ import datetime
 import json
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 SELFTEST = "selftest.yml"
 ACCEPTANCE = "acceptance.yml"
 MAX_AGE_DAYS = 7
+ACCEPTANCE_TARGETS = ("factory-vuln-web", "factory-vuln-ios")
 MAJOR_TAG = "v1"
 CONFIRM = "v1"
 
@@ -26,26 +29,63 @@ def _parse(stamp: str) -> datetime.datetime:
     return datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
 
 
-def latest_success(runs: list[dict], sha: str, now: datetime.datetime, max_age_days: int) -> dict | None:
+def successful_runs(runs: list[dict], sha: str, now: datetime.datetime, max_age_days: int) -> list[dict]:
     oldest = now - datetime.timedelta(days=max_age_days)
     good = [
         r for r in runs
         if r.get("head_sha") == sha and r.get("conclusion") == "success" and r.get("status") == "completed"
         and _parse(r["updated_at"]) >= oldest
     ]
-    return max(good, key=lambda r: _parse(r["updated_at"])) if good else None
+    return sorted(good, key=lambda r: _parse(r["updated_at"]), reverse=True)
 
 
-def check(repo: str, sha: str, now: datetime.datetime, gh=_gh, max_age_days: int = MAX_AGE_DAYS) -> list[str]:
+def _download(repo: str, run_id: int, name: str, dest: str) -> None:
+    proc = subprocess.run(["gh", "run", "download", str(run_id), "--repo", repo, "--name", name, "--dir", dest], capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise ReleaseError(f"could not download artifact {name} of run {run_id}: {proc.stderr.strip()}")
+
+
+def acceptance_problem(repo: str, run_id: int, sha: str, download=None) -> str | None:
+    download = download or _download
+    for target in ACCEPTANCE_TARGETS:
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                download(repo, run_id, f"acceptance-{target}", tmp)
+                result = json.loads((Path(tmp) / "acceptance.json").read_text())
+            except (ReleaseError, OSError, json.JSONDecodeError) as e:
+                return f"acceptance run {run_id} has no usable result for {target} ({e})"
+        factory = result.get("factory") or {}
+        if not result.get("ok"):
+            return f"acceptance run {run_id} did not pass for {target}"
+        if factory.get("commit") != sha:
+            return (
+                f"acceptance run {run_id} tested factory commit {factory.get('commit') or 'unknown'} "
+                f"(ref {factory.get('ref') or 'unknown'}) on {target}, not {sha}"
+            )
+    return None
+
+
+def check(repo: str, sha: str, now: datetime.datetime, gh=_gh, max_age_days: int = MAX_AGE_DAYS, download=None) -> list[str]:
     lines = []
     problems = []
     for workflow, label in ((SELFTEST, "selftest"), (ACCEPTANCE, "acceptance")):
         out = gh(["api", f"repos/{repo}/actions/workflows/{workflow}/runs?head_sha={sha}&per_page=100"])
-        run = latest_success(json.loads(out).get("workflow_runs", []), sha, now, max_age_days)
-        if run:
-            lines.append(f"{label}: run {run['id']} succeeded at {run['updated_at']}")
-        else:
+        runs = successful_runs(json.loads(out).get("workflow_runs", []), sha, now, max_age_days)
+        if not runs:
             problems.append(f"no successful {label} run for {sha} in the last {max_age_days} days")
+            continue
+        if label == "selftest":
+            lines.append(f"{label}: run {runs[0]['id']} succeeded at {runs[0]['updated_at']}")
+            continue
+        reasons = []
+        for run in runs:
+            reason = acceptance_problem(repo, run["id"], sha, download)
+            if reason is None:
+                lines.append(f"{label}: run {run['id']} succeeded at {run['updated_at']} and tested factory commit {sha} on {', '.join(ACCEPTANCE_TARGETS)}")
+                break
+            reasons.append(reason)
+        else:
+            problems.append(f"no acceptance run tested {sha} ({reasons[0]})")
     if problems:
         raise ReleaseError("; ".join(problems) + ". Run the missing workflow on this commit, then release again.")
     return lines
@@ -87,9 +127,9 @@ def move_tags(repo: str, sha: str, today: datetime.date, gh=_gh) -> list[str]:
     return [MAJOR_TAG, dated]
 
 
-def release(repo: str, sha: str, confirm: str, now: datetime.datetime, gh=_gh) -> list[str]:
+def release(repo: str, sha: str, confirm: str, now: datetime.datetime, gh=_gh, download=None) -> list[str]:
     require_confirmation(confirm)
-    lines = check(repo, sha, now, gh)
+    lines = check(repo, sha, now, gh, download=download)
     tags = move_tags(repo, sha, now.date(), gh)
     return [*lines, f"moved {tags[0]} and created {tags[1]} at {sha}"]
 

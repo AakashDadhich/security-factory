@@ -12,6 +12,10 @@ gh workflow run acceptance.yml --repo AakashDadhich/security-factory
 
 The workflow also runs every Monday. It mints an App token for `factory-vuln-web` (the App needs `actions: write` there), dispatches that repo's `factory.yml` stub on `main`, polls every 30 seconds for up to 60 minutes (`python -m factory.acceptance_run`), then runs `python -m factory.acceptance`. The job is green only when the gate failed and every non-optional expectation matched. The table is uploaded as artifact `acceptance` (`acceptance.md`, `acceptance.json`) and shown in the job summary.
 
+## Which factory the target runs
+
+The vulnerable apps' stubs take a `workflow_dispatch` input `factory-ref` (default `main`, also used for push, pull request, issue and `repository_dispatch` runs). `acceptance.yml` passes its own `github.sha`, so the target checks out the factory at the commit under test. `python -m factory.acceptance --expect-factory-commit $GITHUB_SHA` reads `factory_commit` from the target run's `setup` artifact and fails on a mismatch; `acceptance.json` and the table record `factory.ref` and `factory.commit`. `docs/release.md` explains how the release gate uses this.
+
 ## `expected-findings.yml`
 
 A list in the vulnerable repo. Each entry:

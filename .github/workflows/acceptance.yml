@@ -48,7 +48,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          python -m factory.acceptance_run --repo "$TARGET_OWNER/$TARGET_NAME" --ref main --github-output "$GITHUB_OUTPUT"
+          python -m factory.acceptance_run --repo "$TARGET_OWNER/$TARGET_NAME" --ref main --factory-ref "$GITHUB_SHA" --github-output "$GITHUB_OUTPUT"
       - name: check the gate against the expected findings
         shell: bash
         env:
@@ -56,7 +56,7 @@ jobs:
           RUN_ID: ${{ steps.target.outputs.run_id }}
         run: |
           gh api "repos/$TARGET_OWNER/$TARGET_NAME/contents/expected-findings.yml" -H 'Accept: application/vnd.github.raw' > "$RUNNER_TEMP/expected-findings.yml"
-          python -m factory.acceptance --repo "$TARGET_OWNER/$TARGET_NAME" --run-id "$RUN_ID" --expected "$RUNNER_TEMP/expected-findings.yml" --out out/acceptance | tee -a "$GITHUB_STEP_SUMMARY"
+          python -m factory.acceptance --repo "$TARGET_OWNER/$TARGET_NAME" --run-id "$RUN_ID" --expect-factory-commit "$GITHUB_SHA" --expected "$RUNNER_TEMP/expected-findings.yml" --out out/acceptance | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

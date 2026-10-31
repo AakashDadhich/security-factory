@@ -31,9 +31,12 @@ def pick_run(runs: list[dict], since: datetime.datetime) -> dict | None:
     return min(fresh, key=lambda r: _parse(r["createdAt"])) if fresh else None
 
 
-def dispatch(repo: str, ref: str, gh=_gh, now=lambda: datetime.datetime.now(datetime.timezone.utc)) -> datetime.datetime:
+def dispatch(repo: str, ref: str, factory_ref: str | None = None, gh=_gh, now=lambda: datetime.datetime.now(datetime.timezone.utc)) -> datetime.datetime:
     since = now().replace(microsecond=0)
-    gh(["workflow", "run", WORKFLOW, "--repo", repo, "--ref", ref])
+    cmd = ["workflow", "run", WORKFLOW, "--repo", repo, "--ref", ref]
+    if factory_ref:
+        cmd += ["-f", f"factory-ref={factory_ref}"]
+    gh(cmd)
     return since
 
 
@@ -64,10 +67,11 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="python -m factory.acceptance_run")
     p.add_argument("--repo", required=True)
     p.add_argument("--ref", default="main")
+    p.add_argument("--factory-ref", help="factory ref the target run must check out (default: the stub's default)")
     p.add_argument("--github-output")
     args = p.parse_args(argv)
     try:
-        since = dispatch(args.repo, args.ref)
+        since = dispatch(args.repo, args.ref, args.factory_ref)
         run_id = find_run(args.repo, since)
         print(f"dispatched run {run_id}", flush=True)
         conclusion = wait_for(args.repo, run_id)

@@ -52,6 +52,11 @@
       "type": "string",
       "minLength": 1
     },
+    "factory_commit": {
+      "description": "Commit the factory checkout in .factory/ resolved to",
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
     "asvs_level": {
       "type": "integer",
       "minimum": 1,

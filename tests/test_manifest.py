@@ -90,3 +90,10 @@ def test_passthrough_fails_without_valid_manifest(tmp_path):
     out = tmp_path / "findings.json"
     assert passthrough.main(["--manifest", str(tmp_path / "missing.json"), "--out", str(out)]) == 1
     assert not out.exists()
+
+
+def test_factory_commit_is_recorded_when_given():
+    assert make(factory_commit="a" * 40)["factory_commit"] == "a" * 40
+    assert "factory_commit" not in make()
+    with pytest.raises(ManifestError):
+        make(factory_commit="main")

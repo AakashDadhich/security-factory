@@ -22,7 +22,7 @@ def _check(manifest) -> dict:
     return manifest
 
 
-def create(cfg: dict, *, mode: str, factory_ref: str, stages: list[str], env: dict, issue: int | None = None, iteration: int = 0) -> dict:
+def create(cfg: dict, *, mode: str, factory_ref: str, stages: list[str], env: dict, issue: int | None = None, iteration: int = 0, factory_commit: str | None = None) -> dict:
     missing = [k for k in ("GITHUB_RUN_ID", "GITHUB_REPOSITORY", "GITHUB_SHA") if not env.get(k)]
     if missing:
         raise ManifestError(f"missing environment: {', '.join(missing)}")
@@ -40,6 +40,8 @@ def create(cfg: dict, *, mode: str, factory_ref: str, stages: list[str], env: di
         "stages": [{"name": "setup", "status": "success"}] + [{"name": s, "status": "pending"} for s in stages],
         "tool_versions": {"python": platform.python_version(), "security-factory": __version__},
     }
+    if factory_commit:
+        manifest["factory_commit"] = factory_commit
     return _check(manifest)
 
 
@@ -67,13 +69,14 @@ def main(argv: list[str] | None = None) -> int:
     create_cmd.add_argument("--config", default=".factory.yml")
     create_cmd.add_argument("--mode", required=True)
     create_cmd.add_argument("--factory-ref", required=True)
+    create_cmd.add_argument("--factory-commit", default="", help="commit the factory checkout resolved to")
     create_cmd.add_argument("--stage", action="append", default=[], dest="stages")
     create_cmd.add_argument("--issue", type=int, default=0, help="issue number, 0 for none")
     create_cmd.add_argument("--iteration", type=int, default=0, help="fix loop round, 0 to 2")
     create_cmd.add_argument("--out", required=True)
     args = parser.parse_args(argv)
     try:
-        manifest = create(config.load(args.config), mode=args.mode, factory_ref=args.factory_ref, stages=args.stages, env=dict(os.environ), issue=args.issue, iteration=args.iteration)
+        manifest = create(config.load(args.config), mode=args.mode, factory_ref=args.factory_ref, stages=args.stages, env=dict(os.environ), issue=args.issue, iteration=args.iteration, factory_commit=args.factory_commit)
         write(args.out, manifest)
     except (ConfigError, ManifestError) as e:
         print(f"error: {e}", file=sys.stderr)

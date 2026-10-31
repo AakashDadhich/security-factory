@@ -118,6 +118,11 @@ def render_table(result: dict) -> str:
     for r in result["rows"]:
         finding = r["finding"].replace("|", "\\|")
         lines.append(f"| {r['id']} | {r['expected_stage']} | {'yes' if r['optional'] else 'no'} | {r['status']} | {r['caught_by'] or '-'} | {finding or '-'} |")
+    factory = result.get("factory")
+    if factory:
+        lines += ["", f"Factory checked out by the target run: ref `{factory.get('ref')}`, commit `{factory.get('commit') or 'unknown'}`"]
+    if result.get("factory_mismatch"):
+        lines += ["", f"FACTORY MISMATCH: {result['factory_mismatch']}"]
     lines += ["", f"Acceptance: **{'PASS' if result['ok'] else 'FAIL'}**", ""]
     return "\n".join(lines)
 
@@ -134,11 +139,37 @@ def load_gate(directory: str | Path) -> tuple[list[dict], dict]:
     return report, gate_result
 
 
-def download_gate(repo: str, run_id: str, dest: str) -> None:
-    cmd = ["gh", "run", "download", run_id, "--repo", repo, "--name", "gate", "--dir", dest]
+def _download(repo: str, run_id: str, name: str, dest: str) -> None:
+    cmd = ["gh", "run", "download", run_id, "--repo", repo, "--name", name, "--dir", dest]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
-        raise AcceptanceError(f"could not download the gate artifact of run {run_id}: {proc.stderr.strip()}")
+        raise AcceptanceError(f"could not download the {name} artifact of run {run_id}: {proc.stderr.strip()}")
+
+
+def download_gate(repo: str, run_id: str, dest: str) -> None:
+    _download(repo, run_id, "gate", dest)
+
+
+def download_setup(repo: str, run_id: str, dest: str) -> None:
+    _download(repo, run_id, "setup", dest)
+
+
+def load_factory(directory: str | Path) -> dict:
+    try:
+        manifest = json.loads((Path(directory) / "run-manifest.json").read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        raise AcceptanceError(f"setup artifact unusable: {e}") from e
+    if not isinstance(manifest, dict):
+        raise AcceptanceError("setup artifact has the wrong shape")
+    return {"ref": manifest.get("factory_ref"), "commit": manifest.get("factory_commit"), "target_commit": manifest.get("commit_sha")}
+
+
+def check_factory(factory: dict, expected_commit: str | None) -> str | None:
+    if not expected_commit:
+        return None
+    if factory.get("commit") != expected_commit:
+        return f"target run checked out factory commit {factory.get('commit') or 'unknown'} (ref {factory.get('ref') or 'unknown'}), expected {expected_commit}"
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -147,6 +178,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--run-id")
     p.add_argument("--expected", required=True)
     p.add_argument("--artifacts", help="folder with an already downloaded gate artifact")
+    p.add_argument("--setup-artifacts", help="folder with an already downloaded setup artifact")
+    p.add_argument("--expect-factory-commit", help="fail unless the target run checked out the factory at this commit")
     p.add_argument("--out", help="folder for acceptance.md and acceptance.json")
     args = p.parse_args(argv)
     if not args.run_id and not args.artifacts:
@@ -159,10 +192,25 @@ def main(argv: list[str] | None = None) -> int:
             with tempfile.TemporaryDirectory() as tmp:
                 download_gate(args.repo, args.run_id, tmp)
                 report, gate_result = load_gate(tmp)
+        factory = None
+        if args.setup_artifacts:
+            factory = load_factory(args.setup_artifacts)
+        elif args.run_id:
+            with tempfile.TemporaryDirectory() as tmp:
+                download_setup(args.repo, args.run_id, tmp)
+                factory = load_factory(tmp)
     except AcceptanceError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     result = evaluate(expectations, report, gate_result)
+    if args.expect_factory_commit and factory is None:
+        print("error: --expect-factory-commit needs --run-id or --setup-artifacts", file=sys.stderr)
+        return 1
+    result["factory"] = factory
+    mismatch = check_factory(factory or {}, args.expect_factory_commit)
+    if mismatch:
+        result["ok"] = False
+        result["factory_mismatch"] = mismatch
     table = render_table(result)
     print(table)
     if args.out:

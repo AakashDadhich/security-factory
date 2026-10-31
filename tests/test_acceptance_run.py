@@ -34,6 +34,21 @@ def test_dispatch_runs_gh_and_returns_start_time():
     assert calls == [["workflow", "run", "factory.yml", "--repo", "o/r", "--ref", "main"]]
 
 
+def test_dispatch_passes_the_factory_ref_as_a_workflow_input():
+    calls = []
+    ar.dispatch("o/r", "main", "a" * 40, gh=lambda a: calls.append(a) or "", now=lambda: T0)
+    assert calls == [["workflow", "run", "factory.yml", "--repo", "o/r", "--ref", "main", "-f", "factory-ref=" + "a" * 40]]
+
+
+def test_main_passes_the_factory_ref_to_dispatch(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(ar, "dispatch", lambda repo, ref, factory_ref=None: seen.append((ref, factory_ref)) or T0)
+    monkeypatch.setattr(ar, "find_run", lambda repo, since: 1)
+    monkeypatch.setattr(ar, "wait_for", lambda repo, run_id: "success")
+    assert ar.main(["--repo", "o/r", "--factory-ref", "abc"]) == 0
+    assert seen == [("main", "abc")]
+
+
 def test_find_run_retries_until_the_run_appears():
     answers = iter([json.dumps([]), json.dumps([run(7, "2026-10-30T12:00:09Z")])])
     sleeps = []
@@ -59,7 +74,7 @@ def test_wait_for_times_out():
 
 
 def test_main_writes_outputs(tmp_path, monkeypatch):
-    monkeypatch.setattr(ar, "dispatch", lambda repo, ref: T0)
+    monkeypatch.setattr(ar, "dispatch", lambda repo, ref, factory_ref=None: T0)
     monkeypatch.setattr(ar, "find_run", lambda repo, since: 99)
     monkeypatch.setattr(ar, "wait_for", lambda repo, run_id: "failure")
     out = tmp_path / "out"
@@ -68,7 +83,7 @@ def test_main_writes_outputs(tmp_path, monkeypatch):
 
 
 def test_main_reports_errors(monkeypatch, capsys):
-    def boom(repo, ref):
+    def boom(repo, ref, factory_ref=None):
         raise ar.RunError("gh workflow failed")
 
     monkeypatch.setattr(ar, "dispatch", boom)
@@ -116,3 +131,16 @@ def test_acceptance_check_step_fails_when_the_matcher_fails():
     check = next(s for s in steps if s.get("name", "").startswith("check the gate"))
     assert check["shell"] == "bash"
     assert "| tee" in check["run"]
+
+
+def test_acceptance_workflow_dispatches_the_target_at_its_own_commit():
+    import pathlib
+
+    import yaml
+
+    path = pathlib.Path(__file__).resolve().parent.parent / ".github" / "workflows" / "acceptance.yml"
+    steps = yaml.safe_load(path.read_text())["jobs"]["acceptance"]["steps"]
+    dispatch = next(s for s in steps if s.get("id") == "target")
+    assert '--factory-ref "$GITHUB_SHA"' in dispatch["run"]
+    check = next(s for s in steps if s.get("name", "").startswith("check the gate"))
+    assert '--expect-factory-commit "$GITHUB_SHA"' in check["run"]

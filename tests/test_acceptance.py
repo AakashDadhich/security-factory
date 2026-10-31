@@ -245,12 +245,69 @@ def test_main_downloads_with_gh_when_given_a_run_id(tmp_path, monkeypatch):
         (tmp_path / dest / "report.json").write_text(json.dumps([finding()]))
         (tmp_path / dest / "gate-result.json").write_text(json.dumps({"status": "fail"}))
 
+    def fake_setup(repo, run_id, dest):
+        calls.append(("setup", repo, run_id))
+        (tmp_path / dest).mkdir(exist_ok=True)
+        (tmp_path / dest / "run-manifest.json").write_text(json.dumps({"factory_ref": "main", "factory_commit": "a" * 40, "commit_sha": "b" * 40}))
+
     monkeypatch.setattr(acceptance, "download_gate", fake_download)
+    monkeypatch.setattr(acceptance, "download_setup", fake_setup)
     assert acceptance.main(["--repo", "o/r", "--run-id", "42", "--expected", str(expected)]) == 0
-    assert calls == [("o/r", "42")]
+    assert calls == [("o/r", "42"), ("setup", "o/r", "42")]
 
 
 def test_main_requires_run_id_or_artifacts(tmp_path):
     expected = write_expected(tmp_path, [{"id": "x", "stage": "s", "cwe": "CWE-1", "min_severity": "low"}])
     with pytest.raises(SystemExit):
         acceptance.main(["--repo", "o/r", "--expected", str(expected)])
+
+
+def write_setup(tmp_path, **manifest):
+    d = tmp_path / "setup"
+    d.mkdir()
+    (d / "run-manifest.json").write_text(json.dumps(manifest))
+    return d
+
+
+def factory_args(tmp_path, commit, expect):
+    gate = write_gate(tmp_path, [finding()], {"status": "fail"})
+    expected = write_expected(tmp_path, [{"id": "sqli", "stage": "sast-semgrep", "cwe": "CWE-89", "min_severity": "high"}])
+    setup = write_setup(tmp_path, factory_ref=commit, factory_commit=commit, commit_sha="c" * 40)
+    return ["--repo", "o/r", "--expected", str(expected), "--artifacts", str(gate), "--setup-artifacts", str(setup), "--out", str(tmp_path / "out"), "--expect-factory-commit", expect]
+
+
+def test_main_records_the_factory_commit_and_passes_when_it_matches(tmp_path, capsys):
+    sha = "a" * 40
+    assert acceptance.main(factory_args(tmp_path, sha, sha)) == 0
+    saved = json.loads((tmp_path / "out" / "acceptance.json").read_text())
+    assert saved["factory"] == {"ref": sha, "commit": sha, "target_commit": "c" * 40}
+    assert f"commit `{sha}`" in capsys.readouterr().out
+
+
+def test_main_fails_when_the_target_checked_out_a_different_factory_commit(tmp_path, capsys):
+    assert acceptance.main(factory_args(tmp_path, "d" * 40, "a" * 40)) == 1
+    out = capsys.readouterr().out
+    assert "FACTORY MISMATCH" in out and "**FAIL**" in out
+    saved = json.loads((tmp_path / "out" / "acceptance.json").read_text())
+    assert saved["ok"] is False and "expected " + "a" * 40 in saved["factory_mismatch"]
+
+
+def test_main_fails_when_the_manifest_has_no_factory_commit(tmp_path, capsys):
+    args = factory_args(tmp_path, "a" * 40, "a" * 40)
+    (tmp_path / "setup" / "run-manifest.json").write_text(json.dumps({"factory_ref": "v1", "commit_sha": "c" * 40}))
+    assert acceptance.main(args) == 1
+    assert "factory commit unknown (ref v1)" in json.loads((tmp_path / "out" / "acceptance.json").read_text())["factory_mismatch"]
+
+
+def test_expect_factory_commit_needs_a_setup_artifact(tmp_path, capsys):
+    gate = write_gate(tmp_path, [finding()], {"status": "fail"})
+    expected = write_expected(tmp_path, [{"id": "sqli", "stage": "sast-semgrep", "cwe": "CWE-89", "min_severity": "high"}])
+    assert acceptance.main(["--repo", "o/r", "--expected", str(expected), "--artifacts", str(gate), "--expect-factory-commit", "a" * 40]) == 1
+    assert "needs --run-id or --setup-artifacts" in capsys.readouterr().err
+
+
+def test_bad_setup_artifact_exits_nonzero(tmp_path, capsys):
+    args = factory_args(tmp_path, "a" * 40, "a" * 40)
+    (tmp_path / "setup" / "run-manifest.json").unlink()
+    assert acceptance.main(args) == 1
+    assert "setup artifact unusable" in capsys.readouterr().err
