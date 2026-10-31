@@ -50,6 +50,7 @@ jobs:
         run: |
           python -m factory.acceptance_run --repo "$TARGET_OWNER/$TARGET_NAME" --ref main --github-output "$GITHUB_OUTPUT"
       - name: check the gate against the expected findings
+        shell: bash
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           RUN_ID: ${{ steps.target.outputs.run_id }}

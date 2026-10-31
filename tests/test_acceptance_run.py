@@ -104,3 +104,15 @@ def test_acceptance_workflow_matrix_covers_web_and_ios_and_does_not_stop_early()
     assert job["strategy"]["fail-fast"] is False
     assert job["env"]["TARGET_NAME"] == "${{ matrix.target }}"
     assert "TARGET_NAME" not in yaml.safe_load(path.read_text())["env"]
+
+
+def test_acceptance_check_step_fails_when_the_matcher_fails():
+    import pathlib
+
+    import yaml
+
+    path = pathlib.Path(__file__).resolve().parent.parent / ".github" / "workflows" / "acceptance.yml"
+    steps = yaml.safe_load(path.read_text())["jobs"]["acceptance"]["steps"]
+    check = next(s for s in steps if s.get("name", "").startswith("check the gate"))
+    assert check["shell"] == "bash"
+    assert "| tee" in check["run"]
