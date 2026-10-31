@@ -1,0 +1,25 @@
+# Uncomment exactly one block and edit it to match your project.
+# Docs: docs/pipeline.md in AakashDadhich/security-factory ("Project config").
+
+# --- web ---
+# platform: web
+# asvs_level: null        # 1, 2 or 3, or null for the factory's default rule
+# web:
+#   port: 3000
+#   health_path: /health
+#   openapi: openapi.yaml # optional, lets the DAST scan import your API
+#   dockerfile: Dockerfile
+
+# --- macos ---
+# platform: macos
+# asvs_level: null
+# apple:
+#   project_spec: project.yml  # XcodeGen spec
+#   scheme: App
+
+# --- ios ---
+# platform: ios
+# asvs_level: null
+# apple:
+#   project_spec: project.yml  # XcodeGen spec
+#   scheme: App
