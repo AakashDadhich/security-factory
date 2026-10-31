@@ -56,13 +56,13 @@ Read this file first in every session, then read the one chunk file you were giv
 | 25 | zap-authenticated-scan | done |
 | 26 | macos-build-and-sast | done |
 | 27 | apple-scripted-checks | done |
-| 28 | ios-build-and-mobsf | todo |
+| 28 | ios-build-and-mobsf | done |
 | 29 | apple-vuln-acceptance | todo |
 | 30 | template-and-release | todo |
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 27 are done. Next in order is chunk 28 (ios-build-and-mobsf); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
+Chunks 00 to 28 are done. Next in order is chunk 29 (apple-vuln-acceptance); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -224,7 +224,20 @@ Chunks 00 to 27 are done. Next in order is chunk 28 (ios-build-and-mobsf); check
 - Ad-hoc signed Release builds get `get-task-allow` injected by Xcode, so `apple_build` now passes `CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO` (the first live run caught it as `get-task-allow-release`).
 - Selftest `macos-smoke` runs the codesign integration test with `FACTORY_REQUIRE_CODESIGN=1`.
 
+- iOS stages (chunk 28): repo `AakashDadhich/factory-test-ios` (public), SwiftUI iOS 17 app `FactoryTestIOS` via XcodeGen (`project.yml`, swift-log 1.6.3 with root `Package.resolved`, `Sources/KeychainStore.swift` saving with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, `Sources/PrivacyInfo.xcprivacy`, ATS default, no entitlements file). `.factory.yml` has `platform: ios`, scheme `FactoryTestIOS`. Docs in `docs/pipeline.md` ("iOS stages").
+- `apple_build` reads `platform` from `.factory.yml`. iOS: `xcodebuild ... -sdk iphoneos -destination generic/platform=iOS ... CODE_SIGNING_ALLOWED=NO build`, app in `Release-iphoneos`, `package_ipa` (zipfile, reproducible) writes `app.ipa` to artifact `apple-build`. The four Apple jobs (`apple-build`, `sast-swiftlint`, `codeql-swift-analyze`, `sast-codeql-swift`) run for `macos` and `ios`; `sast-codeql-swift` also traces the iphoneos build. Stage matrix: `apple-build`, `apple-checks`, `sast-swiftlint`, `sast-codeql-swift` list both platforms; `mobsf` is ios only.
+- `apple_checks --platform ios --config .factory.yml`: no `codesign` (unsigned); entitlements come from the XcodeGen spec's `CODE_SIGN_ENTITLEMENTS` or `entitlements.path` of application targets; macOS-only rules skipped.
+- MobSF: lock entry `mobsf` v4.6.2 (`docker.io/opensecurity/mobile-security-framework-mobsf@sha256:3106df06...`, the tag's index digest). `python -m factory.stages.mobsf --ipa f --out d [--run-id]` (`make mobsf IPA=`): random key `fmobsf_...`, passed as `--env MOBSF_API_KEY` by name, container bound to 127.0.0.1:8000, REST `upload`, `scan`, `report_json`, always `docker rm --force`. Findings are built from the report's `appsec` lists (high, medium for `warning`, info; `secure` and `hotspot` dropped), rule `mobsf-<slug of title>`, path `app.ipa`. MobSF prints its key in container logs, so logs, the saved `mobsf-report.json` and errors are redacted. Real 4.6.2 report fixture: `tests/fixtures/mobsf/report-real.json`.
+- Clean iOS app result: MobSF gives 4 medium findings (insecure API use, malloc, rpath set, symbols not stripped), gate still passes, so no suppressions were needed. The `mobsf` step takes about 30 s after the image pull; the whole run about 12 minutes.
+- Direct `git commit && git push` chains and compound shell commands were sometimes refused by the auto-mode classifier in this session; separate simple calls worked.
+
 ## Session log
+
+### 2026-10-31, chunk 28 (ios-build-and-mobsf)
+Added iOS support to `apple_build` (unsigned `-sdk iphoneos` build, `package_ipa`), `apple_checks` (entitlements from the project spec), the `mobsf` lock entry, `factory/stages/mobsf.py`, job `mobsf`, the matrix and workflow changes, Makefile target, docs, and tests (`test_mobsf.py`, `test_ios_stages.py`, additions to `test_apple_build.py` and `test_apple_checks.py`). Built and populated `factory-test-ios` and pushed it. The first live run was green, so the Apple jobs needed no fixes.
+- Done-when: `factory-test-ios` run `41147346935`: `apple-build` (macos-15) and `mobsf` (ubuntu) `success`, every job success or skipped. Artifact `apple-build` has `app.ipa` (`Payload/FactoryTestIOS.app/...`), artifact `mobsf` has `findings.json` (4 medium) and `mobsf-report.json`. Gate `pass` (0 critical, 0 high, 4 medium, 3 low, 8 info), no suppressions needed. Pass.
+- Done-when: selftest run `41149221464` on `a8d86b3` (the final code) all 8 jobs `success`. Pass.
+- Done-when: the `mobsf` job log (431 lines) has no `fmobsf_` string; the `docker run` line shows only `--env MOBSF_API_KEY`. `apple-checks` for the iOS run is `[]`. Pass.
 
 ### 2026-10-30, chunk 27 (apple-scripted-checks)
 Added `factory/apple/` (`inspect.py`, `required_reason_apis.yml`), `factory/stages/apple_checks.py`, the `apple-checks` step and artifact in `apple-build`, the macOS matrix entry, a `macos-smoke` codesign integration step, Makefile target, docs and `tests/test_apple_checks.py` with fixtures. The first live run flagged `get-task-allow-release` because Xcode injects it into ad-hoc Release builds; fixed with `CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO` (`c0030c3`). Used plistlib only (no plutil) and `codesign --entitlements :-`.
