@@ -58,11 +58,11 @@ Read this file first in every session, then read the one chunk file you were giv
 | 27 | apple-scripted-checks | done |
 | 28 | ios-build-and-mobsf | done |
 | 29 | apple-vuln-acceptance | done |
-| 30 | template-and-release | todo |
+| 30 | template-and-release | done |
 | 31 | portfolio-docs | todo |
 
 ## Next up
-Chunks 00 to 29 are done. Next in order is chunk 30 (template-and-release); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
+Chunks 00 to 30 are done. Next in order is chunk 31 (portfolio-docs); check `plan/00-index.md` for dependencies. Each new stage chunk adds a job to `.github/workflows/factory.yml`, adds it to the `gate` job's `needs`, adds `--stage <name>` to the manifest step in `setup`, and adds a `Stage(...)` to `factory/stage_matrix.py`. AI stage chunks call `python -m factory.adapter` (contract in `docs/adapter.md`) and test offline with `FACTORY_MODEL_ADAPTER=fake`.
 
 ## Open decisions
 - D10: secrets management for apps (SOPS/age), deferred.
@@ -247,7 +247,25 @@ Chunks 00 to 29 are done. Next in order is chunk 30 (template-and-release); chec
 | vulnerable-package | deps-sbom | matched | deps-sbom | CVE-2023-39138 (high) |
 | mobsf-ats (optional) | mobsf | matched | mobsf | mobsf-app-transport-security-allowsarbitraryloads-is-allowed (high) |
 
+- Template and release (chunk 30): `AakashDadhich/factory-project-template` (public, `is_template` true, not tagged `security-factory`, not in the App installation, no secrets) is a copy of `templates/project/` (stub at `@v1` with `factory-ref: v1`, `.factory.yml` with commented web, macos and ios examples, dependabot, `.env.example`, `.gitignore`, `security/README.md`, `SECURITY.md`, README). Its stub job has `if: github.repository != 'AakashDadhich/factory-project-template' && (...)`, so it is skipped there (verified by a `workflow_dispatch` run). The template's first push run failed in 0 s only because `v1` did not exist yet. Copying changes from `templates/project/` to the template repo is manual. Guides: `docs/onboarding.md`, `docs/release.md`.
+- Release (chunk 30): `.github/workflows/release.yml` (`workflow_dispatch`, input `confirm` must be `v1`, only on `main`, `contents: write` and `actions: read` in its one job) runs `python3 -m factory.release release --repo --sha --confirm`. `factory/release.py` needs a completed successful `selftest.yml` and `acceptance.yml` run with `head_sha` equal to the commit, updated within 7 days, then creates `v1.YYYYMMDD` (UTC, lightweight) and moves `v1` by force through the refs API. Release flow: push, wait for selftest, `gh workflow run acceptance.yml`, then `gh workflow run release.yml -f confirm=v1`. First release: `v1` and `v1.20261031` at `90b1867`.
+- Known gap (chunk 30): once the vulnerable apps' stubs call `@v1`, an `acceptance.yml` run exercises the released `v1`, not the commit about to be released, so the acceptance gate for the next release only means something if the vulnerable apps follow the candidate (see "Limits to know about" in `docs/release.md`). Decide in a later chunk (for example let the acceptance workflow dispatch the vulnerable stubs with a `factory-ref` override and a matching workflow ref).
+- All five test projects now call the factory at `@v1` / `factory-ref: v1` (`factory-test-web`, `factory-vuln-web`, `factory-test-macos`, `factory-test-ios`, `factory-vuln-ios`). New projects get this from the template.
+- Actions allow list (chunk 30, owner pre-approved): applied to the 6 tagged repos (`security-factory`, `factory-test-web`, `factory-vuln-web`, `factory-test-macos`, `factory-test-ios`, `factory-vuln-ios`): `allowed_actions: selected`, `github_owned_allowed: true`, `verified_allowed: false`, `patterns_allowed: ["AakashDadhich/security-factory/.github/workflows/*"]`. Actions in use: `actions/{checkout,create-github-app-token,download-artifact,setup-node,setup-python,upload-artifact}` and `github/codeql-action/{init,analyze,upload-sarif}`, all covered by the GitHub-owned rule; no third-party action. The setup loop in `docs/setup-repos.md` now applies the same list to every tagged repo (variable `ALLOWED`); a new third-party action needs its SHA pattern added there and re-applied.
+- Actions-policy gotcha: `gh ... --jq -c` is parsed as the jq expression (`-c` is not a gh flag); use `--jq '<expr>'` alone.
+- Automated security review comments on the template stub (`secrets: inherit` to a tag-pinned same-owner workflow, `repository_dispatch` payload, label trigger) repeat accepted tradeoffs from chunks 06, 09 and 21: `authorize` validates the fix payload and the sender and issue author allowlist, fork PRs get no secrets. Not changed.
+
 ## Session log
+
+### 2026-10-31, chunk 30 (template-and-release)
+Added `factory/release.py` and `release.yml`, `templates/project/` files (README, `.factory.yml` examples, `.env.example`, `.gitignore`, `SECURITY.md`, `security/README.md`) and the `@v1` stub with a template-repo guard, `tests/test_release.py` (19 test functions) and `tests/test_template.py`, `docs/onboarding.md`, `docs/release.md`, the allow list in `docs/setup-repos.md`. Filled and pushed `factory-project-template`, cut `v1`, applied the allow list, switched the five test stubs. Owner pre-approved every push, the release dispatch and the allow list.
+- Done-when: `gh api repos/AakashDadhich/factory-project-template --jq .is_template` printed `true`. Pass.
+- Done-when: `git ls-remote --tags origin v1` printed `90b1867bf5679952dbab7c1255b04cfc3abbb061 refs/tags/v1` (and `v1.20261031` at the same commit). Selftest run `41188167458` on that commit: all 8 jobs `success`, `1233 passed, 8 skipped`. Acceptance run `41188243927` on it: both targets `success`. Release run `41189335989` logged both runs and `moved v1 and created v1.20261031`. Pass.
+- Done-when: a commit without a recent acceptance run fails with `no successful acceptance run for <sha> in the last 7 days. Run the missing workflow on this commit, then release again.`; covered by `test_missing_acceptance_run_fails_with_a_clear_message`, `test_acceptance_run_older_than_seven_days_is_rejected` and `test_failed_check_creates_no_tags` (unit tests, as the chunk allows). Pass.
+- Done-when: `allowed_actions` is `selected` on all 6 repos from `gh repo list AakashDadhich --topic security-factory` (including `factory-test-web`). Pass.
+- Done-when: latest push run in each test project has `ref: v1` in the factory checkout log: test-web `41189428001` (success, 26 jobs incl. gate and record), vuln-web `41189741433`, test-macos `41189743046` (success), test-ios `41189744963` (success), vuln-ios `41189746554`. The two vulnerable apps failed only in `gate`, as designed. Pass.
+- Extra: the allow list did not block the reusable workflow call (pattern `AakashDadhich/security-factory/.github/workflows/*` matched `...@v1`). The template repo's `workflow_dispatch` run `41190487069` is `skipped`.
+- `factory-test-web` local checkout was two commits behind (merged PR #10); my stub commit was rebased onto `origin/main` before pushing.
 
 ### 2026-10-31, chunk 29 (apple-vuln-acceptance)
 Built and pushed `factory-vuln-ios`, wrote its `expected-findings.yml`, turned `acceptance.yml` into a web and iOS matrix, fixed the iOS `get-task-allow` key and the masked matcher failure, updated `docs/acceptance.md` and tests (`test_acceptance_run.py`, `test_apple_checks.py`). The first two matrix runs exposed my own expectation mistakes (missing `min_severity`, CWE and rule id choices); only the expectations changed.
